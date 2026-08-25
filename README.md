@@ -154,7 +154,7 @@ isn't obvious from the knob alone.
 
 ## Factory presets
 
-The plugin exposes eight factory presets (`Source/PluginProcessor.cpp`,
+The plugin exposes nine factory presets (`Source/PluginProcessor.cpp`,
 `getPresets()`), selectable either from the in-plugin preset picker in the
 editor's header or from the host's own preset menu (in Logic: the preset
 field at the top of the plugin window) — both drive the same underlying
@@ -238,6 +238,24 @@ program list, so they always stay in sync with each other:
   for a growly, monster-movie-trailer low end. No Vibrato here (unlike the
   other dark/warm presets) — a wobble reads as comic rather than menacing
   at this depth.
+- **Lies** — built from analyzing `example/lies_1.mp3` (dry) against
+  `example/lies_2.mp3` (processed) the same way JJ Dark Vocal was:
+  autocorrelation pitch-tracking found the right channel shifted up by a
+  measured **+470 cents** (154Hz to 202Hz median), while the left channel's
+  level collapsed to near-total digital silence in the processed file. That
+  silenced channel isn't reproducible with this plugin (Shift has no
+  per-channel pan or gain, only pitch and delay), so the preset approximates
+  the same *asymmetry* instead, Octave-Width-style: Pitch L stays at 0
+  (lies_1's L and R were already nearly identical — only one side got the
+  extreme treatment) while Pitch R alone carries the measured +470ct, one
+  channel left recognizable against a wildly pitched-up other one. Focus
+  dropped low so the shift covers the full band, and Mix pushed to 90%
+  (higher than Octave Width's 55%) since here the effect is meant to
+  dominate rather than just widen. The large brightness increase measured
+  between the two files (spectral centroid 682Hz to 1288Hz) needed no
+  separate Warmth stage — an upward shift this size produces that on its
+  own. No vibrato or delay signature was found in the reference files, so
+  both stay off/default.
 
 To add more presets, extend the `std::array<Preset, N>` returned by
 `getPresets()` in `PluginProcessor.cpp` (and bump `N`).
