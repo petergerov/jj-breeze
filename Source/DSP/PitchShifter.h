@@ -5,7 +5,11 @@
 #include <cmath>
 
 /**
-    A small, artifact-light pitch shifter for micro-detune ("microshift") effects.
+    A small, artifact-light pitch shifter, used both for the Shift section's
+    micro-detune ("microshift") widening and — since Pitch L/R was widened
+    to a full +-1200 cents — for larger, semitone-scale drops dialed in
+    directly on Shift's independent per-channel Pitch/Delay controls (as an
+    alternative to the dedicated, single-amount PitchDrop.h/Drop section).
 
     This is the classic dual-tap crossfaded delay-line pitch shifter: two read
     pointers trail the write pointer by a delay that ramps linearly (up or down
@@ -15,8 +19,11 @@
     property), which is what keeps the output level steady and click-free as
     each tap resets.
 
-    It is tuned for *small* shifts (a few cents to a semitone or so) — the use
-    case this plugin needs — rather than being a general-purpose harmonizer.
+    The grain length trades off latency/smearing against how audible the
+    tap-crossfade rate is at larger shifts (that rate is roughly
+    |1 - ratio| * sampleRate / grainLength); PluginProcessor prepares this
+    class with a longer grain than the old 35ms default specifically so the
+    widened range holds up, at a small cost to micro-shift transient tightness.
 */
 class PitchShifter
 {

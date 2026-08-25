@@ -13,16 +13,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::crea
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
+    // Range widened from the original +-50 cents (still the default-preset
+    // territory, and still a skewed range so that fine micro-detune territory
+    // isn't crammed into a sliver of the knob) to +-1200 (a full octave) so
+    // Shift's independent per-channel Pitch *and* Delay controls can also
+    // dial in a big, semitone-scale drop directly — an alternative to the
+    // single-amount, both-channels-together Drop section (see PitchDrop.h).
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ParamIDs::pitchL, 1 }, "Pitch L",
-        juce::NormalisableRange<float> (-50.0f, 50.0f, 0.01f), 12.0f,
+        juce::NormalisableRange<float> (-1200.0f, 1200.0f, 0.01f, 0.4f, true), 12.0f,
         juce::AudioParameterFloatAttributes()
             .withLabel ("cents")
             .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " ct"; })));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ParamIDs::pitchR, 1 }, "Pitch R",
-        juce::NormalisableRange<float> (-50.0f, 50.0f, 0.01f), -12.0f,
+        juce::NormalisableRange<float> (-1200.0f, 1200.0f, 0.01f, 0.4f, true), -12.0f,
         juce::AudioParameterFloatAttributes()
             .withLabel ("cents")
             .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " ct"; })));

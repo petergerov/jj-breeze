@@ -120,7 +120,11 @@ private:
 
         void prepare (double sampleRate)
         {
-            pitchShifter.prepare (sampleRate);
+            // Longer than PitchShifter.h's original 35ms default: Pitch L/R
+            // now goes up to +-1200 cents (see createParameterLayout()), and
+            // a longer grain keeps the tap-crossfade rate down at that shift
+            // size the same way PitchDrop.h's 70ms grain does for Drop.
+            pitchShifter.prepare (sampleRate, 70.0f);
             delay.prepare (sampleRate);
             lowBandFilter.reset();
             highBandFilter.reset();

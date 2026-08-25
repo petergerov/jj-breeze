@@ -25,10 +25,11 @@ semitone-scale pitch shift to the voice itself, blended against dry by its
 own Mix knob — everything below (Shift, Slapback, Vibrato, Warmth) then
 treats that blend as its input, the same way it previously treated the raw
 dry signal. It's the same dual-tap crossfaded delay-line technique as the
-Shift section's pitch shifter, just with a longer grain (70ms vs 35ms) and
-a much wider range (±12 semitones vs Shift's ±50 cents) — Shift is tuned
-for a subtle micro-detune "widener," Drop for an audibly deeper/darker
-voice. Off by default (Drop Mix = 0%).
+Shift section's pitch shifter (both now use a 70ms grain and cover the same
+±12-semitone/±1200-cent range), and it's a genuinely separate mechanism —
+not a UI convenience wrapper around Shift — mainly to be a single amount
+applied identically to both channels, always full-band, with one Mix knob.
+Off by default (Drop Mix = 0%).
 
 Each channel then runs through:
 
@@ -36,7 +37,14 @@ Each channel then runs through:
    — the classic "microshift" technique: two read pointers trail the write
    pointer by a delay that ramps up or down depending on the desired pitch
    ratio, crossfaded with 50%-overlapping Hann windows so each tap's reset is
-   inaudible. Left and right each have their own independent shift amount.
+   inaudible. Left and right each have their own independent shift amount —
+   and, since Pitch L/R was widened to ±1200 cents alongside Drop, this is
+   also usable on its own for a big semitone-scale drop, with the advantage
+   of independent per-channel Pitch *and* Delay (see Controls below). One
+   difference from Drop worth knowing: the wet path here only covers
+   whatever's above Focus (20Hz–10kHz, default 150Hz) — the band below always
+   stays dry/unshifted (see point 3) — so getting a full-band drop this way
+   means turning Focus most of the way down, not just Mix up.
 2. **A short modulated delay** (`Source/DSP/ModulatedDelay.h`) with a slow,
    fixed-depth LFO wobble on top of the user's Delay L/R knobs, for the
    "time-varying delay" movement both reference plugins have.
@@ -100,10 +108,10 @@ delay values you want directly.
 
 | Control | Range | What it does |
 |---|---|---|
-| **Drop Amount** | −12 to +12 semitones | Static pitch shift applied to the voice itself, ahead of every other section. Default −3 (down). Negative/deeper is the "dark voice" direction; unlike Pitch L/R this isn't a subtle detune — a few semitones is clearly audible. |
+| **Drop Amount** | −12 to +12 semitones | Static pitch shift applied to the voice itself, ahead of every other section. Default −3 (down). Negative/deeper is the "dark voice" direction; unlike Pitch L/R at their default range this isn't a subtle detune — a few semitones is clearly audible. |
 | **Drop Mix** | 0–100% | Blend of the pitch-dropped voice with the plain dry signal. 0% by default (off). |
-| **Pitch L** | −50 to +50 cents | Pitch shift applied to the left channel. Default +12 (up). |
-| **Pitch R** | −50 to +50 cents | Pitch shift applied to the right channel. Default −12 (down) — opposite Pitch L gives the classic wide microshift; matching signs instead gives a more mono-compatible width via delay offset alone. |
+| **Pitch L** | −1200 to +1200 cents | Pitch shift applied to the left channel. Default +12 (up). Skewed so fine micro-detune territory near 0 still gets most of the knob's travel, but the full ±1 octave is reachable — so besides the classic microshift widening, Shift's independent per-channel Pitch *and* Delay controls are also a way to dial in a big, semitone-scale dark/deep drop directly (matching Pitch L and R and using Mix/Focus like a "wet" pitch-drop), as an alternative to the single-amount, both-channels-together Drop section above. |
+| **Pitch R** | −1200 to +1200 cents | Pitch shift applied to the right channel. Default −12 (down) — opposite Pitch L gives the classic wide microshift; matching signs instead gives a more mono-compatible width (or, at large values, a mono-compatible pitch drop) via delay offset alone. |
 | **Delay L** | 0–40 ms | Base delay time on the left channel, with subtle built-in modulation. |
 | **Delay R** | 0–40 ms | Base delay time on the right channel. |
 | **Focus** | 20 Hz–10 kHz | Crossover point (both channels): everything below stays fully dry/untouched; only the band above gets pitch-shifted + delayed. Raise it to keep the width effect off the low end entirely. |
