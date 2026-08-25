@@ -227,8 +227,6 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     float* left  = buffer.getWritePointer (0);
     float* right = numOutChannels > 1 ? buffer.getWritePointer (1) : buffer.getWritePointer (0);
 
-    float blockPeak = 0.0f;
-
     for (int n = 0; n < numSamples; ++n)
     {
         const float dryL = left[n];
@@ -273,11 +271,7 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
         left[n]  = dryL + shiftMixL + vibMixL + slapOut;
         right[n] = dryR + shiftMixR + vibMixR + slapOut;
-
-        blockPeak = juce::jmax (blockPeak, std::abs (left[n]), std::abs (right[n]));
     }
-
-    outputLevel.store (blockPeak, std::memory_order_relaxed);
 }
 
 juce::AudioProcessorEditor* JJBreezeAudioProcessor::createEditor()

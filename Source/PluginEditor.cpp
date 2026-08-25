@@ -1,12 +1,10 @@
 #include "PluginEditor.h"
-#include "BinaryData.h"
 
 using namespace GearPalette;
 
 JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processorRef (p),
-      vuMeter (p.outputLevel),
       pitchLKnob (p.apvts, ParamIDs::pitchL, "PITCH L"),
       pitchRKnob (p.apvts, ParamIDs::pitchR, "PITCH R"),
       delayLKnob (p.apvts, ParamIDs::delayL, "DELAY L"),
@@ -22,8 +20,6 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
 {
     setLookAndFeel (&retroLookAndFeel);
 
-    portholeImage = juce::ImageCache::getFromMemory (BinaryData::vinyl_png, BinaryData::vinyl_pngSize);
-
     titleLabel.setText ("J.J. BREEZE", juce::dontSendNotification);
     titleLabel.setFont (juce::Font (juce::FontOptions ("Avenir Next Condensed", 24.0f, juce::Font::bold))
                              .withExtraKerningFactor (0.05f));
@@ -36,8 +32,6 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     subtitleLabel.setColour (juce::Label::textColourId, textMuted);
     subtitleLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (subtitleLabel);
-
-    addAndMakeVisible (vuMeter);
 
     addAndMakeVisible (pitchLKnob);
     addAndMakeVisible (pitchRKnob);
@@ -76,7 +70,7 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     startTimerHz (15);
 
     setResizable (false, false);
-    setSize (480, 720);
+    setSize (480, 650);
 }
 
 JJBreezeAudioProcessorEditor::~JJBreezeAudioProcessorEditor()
@@ -129,13 +123,14 @@ void JJBreezeAudioProcessorEditor::drawScrew (juce::Graphics& g, juce::Point<flo
 }
 
 // Shared with resized() so panels, rules and knob rows all land in the same place.
-static constexpr int headerHeight = 60;
-static constexpr int meterStripHeight = 110;
+static constexpr int headerHeight = 68;
 static constexpr int outerPadding = 20; // horizontal margin
 static constexpr int topBottomPadding = 12;
-static constexpr int sectionLabelHeight = 22;
+static constexpr int sectionLabelHeight = 26;
+static constexpr int sectionGap = 14; // vertical gap between one section's card and the next
 static constexpr int toggleWidth = 34;
 static constexpr int numSectionLabels = 3;    // Shift, Slapback, Vibrato each get one
+static constexpr int numSectionGaps = 2;      // gaps: Shift-Slapback, Slapback-Vibrato
 
 void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
 {
@@ -173,47 +168,6 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (accent);
     g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (ledCentre));
 
-    // The meter strip — a recessed metal card holding the VU meter and the
-    // porthole, styled after the metering section on an LA-2A/1176-style
-    // hardware compressor.
-    {
-        auto mp = meterPanelBounds.toFloat();
-        g.setColour (chassisBottom.withAlpha (0.6f));
-        g.fillRoundedRectangle (mp.translated (0.0f, 2.0f), 8.0f);
-        g.setColour (panelFill);
-        g.fillRoundedRectangle (mp, 8.0f);
-        g.setColour (chassisBottom.withAlpha (0.9f));
-        g.drawRoundedRectangle (mp, 8.0f, 1.0f);
-        g.setColour (metalLight.withAlpha (0.1f));
-        g.drawLine (mp.getX() + 10.0f, mp.getY() + 1.0f, mp.getRight() - 10.0f, mp.getY() + 1.0f, 1.0f);
-    }
-
-    // The porthole — a metal-bezelled viewport onto vinyl.png, like a small
-    // maker's plate riveted onto a vintage amp, dimmed to match the chassis.
-    if (portholeImage.isValid())
-    {
-        auto porthole = portholeBounds.toFloat();
-        auto bezel = porthole.expanded (3.0f);
-
-        juce::ColourGradient bezelGrad (metalLight, bezel.getX(), bezel.getY(),
-                                         metalDark, bezel.getRight(), bezel.getBottom(), false);
-        g.setGradientFill (bezelGrad);
-        g.fillEllipse (bezel);
-
-        juce::Path circle;
-        circle.addEllipse (porthole);
-        g.saveState();
-        g.reduceClipRegion (circle);
-        g.drawImage (portholeImage, porthole, juce::RectanglePlacement::fillDestination);
-        g.setGradientFill (juce::ColourGradient (juce::Colours::transparentBlack, porthole.getCentre(),
-                                                   chassisBottom.withAlpha (0.55f), porthole.getBottomRight(), true));
-        g.fillEllipse (porthole);
-        g.restoreState();
-
-        g.setColour (chassisBottom);
-        g.drawEllipse (porthole, 1.2f);
-    }
-
     // Section panels — recessed metal cards that visually group each knob
     // row (or, when the section's toggle is off, just its collapsed
     // header bar).
@@ -230,7 +184,7 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawLine (pf.getX() + 10.0f, pf.getY() + 1.0f, pf.getRight() - 10.0f, pf.getY() + 1.0f, 1.0f);
 
         g.setColour (accent.withAlpha (0.5f));
-        g.drawHorizontalLine (label.getBottom() - 3, (float) label.getX(), (float) panelBounds.getRight());
+        g.drawHorizontalLine (label.getBottom() - 1, (float) label.getX(), (float) panelBounds.getRight());
     };
 
     drawSection (shiftSectionLabel, shiftPanelBounds);
@@ -250,20 +204,12 @@ void JJBreezeAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
 
-    auto header = area.removeFromTop (headerHeight).reduced (18, 8);
+    auto header = area.removeFromTop (headerHeight).reduced (18, 10);
     header.removeFromLeft (18); // room for the power LED
-    titleLabel.setBounds (header.removeFromTop (26));
+    titleLabel.setBounds (header.removeFromTop (28));
     subtitleLabel.setBounds (header);
 
-    area.removeFromTop (6); // gap before the meter strip
-    meterPanelBounds = area.removeFromTop (meterStripHeight).reduced (outerPadding, 0);
-    auto meterInner = meterPanelBounds.reduced (14, 14);
-    constexpr int portholeSize = 62;
-    portholeBounds = meterInner.removeFromRight (portholeSize).withSizeKeepingCentre (portholeSize, portholeSize);
-    meterInner.removeFromRight (16); // gap between meter and porthole
-    vuMeter.setBounds (meterInner);
-    area.removeFromTop (10); // gap before the knob sections
-
+    area.removeFromTop (8); // gap before the knob sections
     area.reduce (outerPadding, topBottomPadding);
 
     const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
@@ -280,13 +226,13 @@ void JJBreezeAudioProcessorEditor::resized()
     // and whatever height that frees up goes to sections still expanded, so
     // e.g. Shift alone gets noticeably bigger knobs when Slap and Vibrato
     // are both off, rather than leaving dead space.
-    const int rowHeight = (area.getHeight() - numSectionLabels * sectionLabelHeight) / activeRows;
+    const int rowHeight = (area.getHeight() - numSectionLabels * sectionLabelHeight - numSectionGaps * sectionGap) / activeRows;
 
     // SHIFT — pitch + delay rows (2 rows worth of height when on).
     {
         auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
         auto labelRow = fullLabelRow;
-        shiftToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 3));
+        shiftToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 5));
         labelRow.removeFromRight (6);
         shiftSectionLabel.setBounds (labelRow);
 
@@ -318,11 +264,13 @@ void JJBreezeAudioProcessorEditor::resized()
         }
     }
 
+    area.removeFromTop (sectionGap);
+
     // SLAPBACK — one row.
     {
         auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
         auto labelRow = fullLabelRow;
-        slapToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 3));
+        slapToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 5));
         labelRow.removeFromRight (6);
         slapSectionLabel.setBounds (labelRow);
 
@@ -346,12 +294,14 @@ void JJBreezeAudioProcessorEditor::resized()
         }
     }
 
+    area.removeFromTop (sectionGap);
+
     // VIBRATO — one row, takes whatever's left (absorbs any rounding
     // remainder from the integer row-height division above).
     {
         auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
         auto labelRow = fullLabelRow;
-        vibratoToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 3));
+        vibratoToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 5));
         labelRow.removeFromRight (6);
         vibratoSectionLabel.setBounds (labelRow);
 
