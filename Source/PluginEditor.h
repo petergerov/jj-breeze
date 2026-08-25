@@ -195,6 +195,71 @@ public:
     }
 };
 
+/** Undo/redo drawn as a curved arrow — a circular sweep with an arrowhead,
+    the standard "history" pictogram — rather than relying on a Unicode
+    glyph (U+21B6/U+21B7), which renders inconsistently (sometimes as a
+    plain tofu box) depending on the host's font fallback. Redo is undo's
+    exact mirror image, both generated from the same drawing code. */
+class UndoRedoButton : public juce::Button
+{
+public:
+    explicit UndoRedoButton (bool isRedoButton) : juce::Button ({}), isRedo (isRedoButton) {}
+
+    void paintButton (juce::Graphics& g, bool /*isMouseOverButton*/, bool isButtonDown) override
+    {
+        using namespace GearPalette;
+
+        auto bounds = getLocalBounds().toFloat().reduced (4.0f);
+        const auto centre = bounds.getCentre();
+        const auto radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
+
+        const juce::Colour colour = ! isEnabled() ? metalDark.withAlpha (0.6f)
+                                                    : (isButtonDown ? accent.brighter (0.3f) : accent);
+
+        // Same angle convention as RetroLookAndFeel's rotary knob: 0 = up,
+        // increasing clockwise. Redo sweeps clockwise (gap at the bottom,
+        // curling right); undo is the mirror image (curling left) — same
+        // sweep, just negated.
+        const float sign = isRedo ? 1.0f : -1.0f;
+        const float startAngle = sign * juce::degreesToRadians (-125.0f);
+        const float endAngle   = sign * juce::degreesToRadians (125.0f);
+
+        auto pointOnArc = [&] (float angle)
+        {
+            return centre.translated (radius * std::sin (angle), -radius * std::cos (angle));
+        };
+
+        juce::Path arc;
+        arc.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, startAngle, endAngle, true);
+        g.setColour (colour);
+        g.strokePath (arc, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        // Arrowhead at the arc's leading end. Built from the tangent
+        // direction (the vector from a point just behind the tip to the tip
+        // itself) rather than a hand-derived rotation angle, so it's always
+        // correct regardless of which way the arc sweeps.
+        const auto tip = pointOnArc (endAngle);
+        const auto justBehind = pointOnArc (endAngle - sign * juce::degreesToRadians (10.0f));
+        auto dir = tip - justBehind;
+        const float len = dir.getDistanceFromOrigin();
+        if (len > 0.0001f)
+        {
+            dir = juce::Point<float> (dir.x / len, dir.y / len);
+            const juce::Point<float> perp (-dir.y, dir.x);
+            constexpr float headLen = 6.5f, headWidth = 6.0f;
+            const auto base = tip - dir * headLen;
+
+            juce::Path head;
+            head.addTriangle (tip, base + perp * (headWidth * 0.5f), base - perp * (headWidth * 0.5f));
+            g.setColour (colour);
+            g.fillPath (head);
+        }
+    }
+
+private:
+    bool isRedo;
+};
+
 /** A rotary slider with a caption underneath and an amber LED-style
     numeric readout — the plugin's whole UI is a handful of these plus
     section groupings. */
@@ -337,7 +402,7 @@ private:
     std::array<float, ParamIDs::all.size()> activePresetSnapshot {};
 
     // Undo/redo — see JJBreezeAudioProcessor::undoManager.
-    juce::TextButton undoButton { "\xE2\x86\xB6" }, redoButton { "\xE2\x86\xB7" }; // U+21B6 / U+21B7
+    UndoRedoButton undoButton { false }, redoButton { true };
 
     // Forces all three sections off — the untouched dry signal — without
     // disturbing any knob or which sections were individually on.
