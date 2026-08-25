@@ -5,7 +5,6 @@ name: Build macOS (Apple Silicon)
 # macos-latest so this stays an Apple Silicon build even if GitHub's
 # "latest" alias moves to a newer default later.
 on:
-  push:
   workflow_dispatch:
 
 jobs:

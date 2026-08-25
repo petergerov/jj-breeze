@@ -5,7 +5,6 @@ name: Build Windows
 # list in CMakeLists.txt on Windows: VST3 and Standalone (AU is Apple-only
 # and never applies here).
 on:
-  push:
   workflow_dispatch:
 
 jobs:
