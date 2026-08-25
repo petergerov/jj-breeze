@@ -123,7 +123,7 @@ switch, independent of its Mix knob — see "How it works" above.
 
 The editor's header carries a few more workflow controls, top to bottom:
 
-- A **preset** picker (see Factory presets below) covering both the eight
+- A **preset** picker (see Factory presets below) covering both the nine
   built-in factory presets and any **user presets** you save. **SAVE**
   prompts for a name and writes the current knob settings to disk
   (`~/Library/Application Support/Gerov/jj-breeze/Presets`, independent of
@@ -132,11 +132,11 @@ The editor's header carries a few more workflow controls, top to bottom:
   which can't be deleted). The picker's text dims once you've tweaked
   something away from the selected preset, so it never silently claims to
   still show what's actually loaded.
-- **Undo/redo** (the ↶/↷ buttons, or Cmd+Z/Cmd+Shift+Z once the editor has
-  focus) — covers every knob, toggle, preset load and A/B recall, grouped
-  so one knob drag or one preset load undoes as a single step. Mainly
-  useful in the Standalone build, which — unlike being hosted in a DAW —
-  has no host-level undo of its own.
+- **Undo/redo** (the curved-arrow icon buttons, or Cmd+Z/Cmd+Shift+Z once
+  the editor has focus) — covers every knob, toggle, preset load and A/B
+  recall, grouped so one knob drag or one preset load undoes as a single
+  step. Mainly useful in the Standalone build, which — unlike being hosted
+  in a DAW — has no host-level undo of its own.
 - **BYPASS** forces all three sections off — the untouched dry signal —
   without touching any knob value or which sections were individually on,
   and restores them on un-bypass.
@@ -144,6 +144,12 @@ The editor's header carries a few more workflow controls, top to bottom:
   a patch while dialing it in (switching away from a slot stores whatever
   you last tweaked there, and a slot you haven't touched yet starts as a
   copy of the other one, so the first switch is silent).
+
+A small circular mark sits faintly next to the title — cropped from
+`images/47-warmth-icon.png` (that file also bakes in "J.J.BREEZE" text,
+redundant next to the header's own title label, hence the separate crop in
+`images/jjbreeze-mark.png`), drawn at low opacity so it reads as an etched
+badge on the chassis rather than a logo competing with the text.
 
 The window itself is resizable (drag the bottom-right corner) with a fixed
 aspect ratio, rather than a fixed size. Every knob resets to its default on

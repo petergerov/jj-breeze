@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PluginProcessor.h"
+#include "BinaryData.h"
 
 namespace GearPalette
 {
@@ -377,6 +378,11 @@ private:
     // Needed for any child component's setTooltip() text to actually pop up
     // as a tooltip; owns no visible bounds of its own.
     juce::TooltipWindow tooltipWindow { this, 500 };
+
+    // The small circular mark in the header's top-left corner (see paint())
+    // — cropped from images/47-warmth-icon.png, drawn faint so it reads as
+    // a badge rather than competing with the title text next to it.
+    juce::Image headerMark;
 
     juce::Label titleLabel;
     juce::Label subtitleLabel;
