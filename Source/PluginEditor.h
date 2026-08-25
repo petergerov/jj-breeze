@@ -182,12 +182,12 @@ private:
 
     juce::Label titleLabel;
     juce::Label subtitleLabel;
-    juce::Label widthSectionLabel;
+    juce::Label shiftSectionLabel;
     juce::Label slapSectionLabel;
     juce::Label vibratoSectionLabel;
 
     // Panel backgrounds drawn behind each group of knobs.
-    juce::Rectangle<int> widthPanelBounds, slapPanelBounds, vibratoPanelBounds;
+    juce::Rectangle<int> shiftPanelBounds, slapPanelBounds, vibratoPanelBounds;
 
     LabelledKnob pitchLKnob, pitchRKnob, delayLKnob, delayRKnob, focusKnob, mixKnob;
     LabelledKnob slapTimeKnob, slapFeedbackKnob, slapMixKnob;

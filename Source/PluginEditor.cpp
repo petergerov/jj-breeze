@@ -43,7 +43,7 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     addAndMakeVisible (focusKnob);
     addAndMakeVisible (mixKnob);
 
-    setUpSectionLabel (widthSectionLabel, "WIDTH");
+    setUpSectionLabel (shiftSectionLabel, "SHIFT");
     setUpSectionLabel (slapSectionLabel, "SLAPBACK");
     addAndMakeVisible (slapTimeKnob);
     addAndMakeVisible (slapFeedbackKnob);
@@ -91,7 +91,7 @@ static constexpr int outerPadding = 20; // horizontal margin
 static constexpr int topBottomPadding = 12;
 static constexpr int sectionLabelHeight = 22;
 static constexpr int numRows = 4;             // pitch, delay, slapback, vibrato
-static constexpr int numSectionLabels = 3;    // Width, Slapback, Vibrato each get one
+static constexpr int numSectionLabels = 3;    // Shift, Slapback, Vibrato each get one
 
 void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
 {
@@ -172,7 +172,7 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawHorizontalLine (label.getBottom() - 3, (float) label.getX(), (float) panelBounds.getRight());
     };
 
-    drawSection (widthSectionLabel, widthPanelBounds);
+    drawSection (shiftSectionLabel, shiftPanelBounds);
     drawSection (slapSectionLabel, slapPanelBounds);
     drawSection (vibratoSectionLabel, vibratoPanelBounds);
 
@@ -204,10 +204,10 @@ void JJBreezeAudioProcessorEditor::resized()
     // height, so every knob ends up the same size.
     const int rowHeight = (area.getHeight() - numSectionLabels * sectionLabelHeight) / numRows;
 
-    widthSectionLabel.setBounds (area.removeFromTop (sectionLabelHeight));
+    shiftSectionLabel.setBounds (area.removeFromTop (sectionLabelHeight));
     auto pitchRow = area.removeFromTop (rowHeight);
     auto delayRow = area.removeFromTop (rowHeight);
-    widthPanelBounds = pitchRow.getUnion (delayRow).expanded (6, 4);
+    shiftPanelBounds = pitchRow.getUnion (delayRow).expanded (6, 4);
 
     slapSectionLabel.setBounds (area.removeFromTop (sectionLabelHeight));
     auto slapRow = area.removeFromTop (rowHeight);
