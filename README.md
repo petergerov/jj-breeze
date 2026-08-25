@@ -301,8 +301,9 @@ This builds three targets:
   ```
 
 - **`scripts/dist-macos.sh`** — builds a Release and packages AU, VST3 and
-  Standalone into `dist/jj-breeze-<version>-macos.zip` for distribution.
-  Signs the artefacts with `CODESIGN_IDENTITY` (defaults to `73DGAYU6A5`;
+  Standalone into `dist/jj-breeze-<version>-macos.zip`, for someone who'll
+  drag each artefact into place themselves. Signs the artefacts with
+  `CODESIGN_IDENTITY` (defaults to the "Developer ID Application" identity —
   pass `CODESIGN_IDENTITY=` empty to skip signing).
 
   ```sh
@@ -312,6 +313,26 @@ This builds three targets:
   CODESIGN_IDENTITY="Developer ID Application: Name (TEAMID)" scripts/dist-macos.sh
   ```
 
+- **`scripts/dist-macos-pkg.sh`** — the same build, but assembled into a
+  proper double-click `dist/jj-breeze-<version>-macos.pkg` installer instead
+  of a zip: signs each artefact, then `pkgbuild`/`productbuild` a system-wide
+  installer (AU → `/Library/Audio/Plug-Ins/Components`, VST3 →
+  `/Library/Audio/Plug-Ins/VST3`, Standalone → `/Applications`), signed with
+  a separate "Developer ID Installer" identity (a different identity *type*
+  than the one used for the binaries themselves — Gatekeeper checks both).
+  `--notarize` submits the finished `.pkg` to Apple's notary service and
+  staples the ticket, so it installs with no Gatekeeper warning at all on
+  another Mac; that needs a one-time `xcrun notarytool store-credentials`
+  setup first (see the script's header comment) and talks to Apple's
+  servers, so it's opt-in rather than part of a routine build.
+
+  ```sh
+  scripts/dist-macos-pkg.sh                    # build + sign the .pkg
+  scripts/dist-macos-pkg.sh --clean              # wipe build/ first
+  scripts/dist-macos-pkg.sh --notarize            # also notarize + staple
+  APP_SIGN_IDENTITY= PKG_SIGN_IDENTITY= scripts/dist-macos-pkg.sh   # unsigned .pkg
+  ```
+
 ## Project layout
 
 ```
@@ -319,6 +340,7 @@ CMakeLists.txt              JUCE plugin target (AU, VST3, Standalone)
 scripts/
   install-local.sh           Build + install AU/VST3/Standalone locally for DAW testing
   dist-macos.sh               Build + package AU/VST3/Standalone into a distributable zip
+  dist-macos-pkg.sh           Build + package AU/VST3/Standalone into a signed .pkg installer
 Source/
   PluginProcessor.h/.cpp    Parameters (APVTS) + the per-block audio path
   PluginEditor.h/.cpp       GUI: Shift knobs, plus separate Vibrato and Warmth sections

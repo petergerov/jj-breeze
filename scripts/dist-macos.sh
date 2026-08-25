@@ -12,12 +12,17 @@
 # Optional env vars:
 #   CODESIGN_IDENTITY   Sign each artefact with this identity before
 #                        packaging (e.g. "Developer ID Application: Name (TEAMID)",
-#                        or just the TEAMID). Defaults to "73DGAYU6A5"; pass
-#                        CODESIGN_IDENTITY= (empty) to skip signing.
+#                        or just the TEAMID). Defaults to the "Developer ID
+#                        Application" identity, the one Gatekeeper will
+#                        actually accept on someone else's Mac (an "Apple
+#                        Development" identity, which is what a bare team ID
+#                        tends to resolve to, is only good for local/Xcode
+#                        testing). Pass CODESIGN_IDENTITY= (empty) to skip
+#                        signing.
 
 set -euo pipefail
 
-: "${CODESIGN_IDENTITY:=73DGAYU6A5}"
+: "${CODESIGN_IDENTITY:=Developer ID Application: Petar Gerov (C9LBGZNZ6P)}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
