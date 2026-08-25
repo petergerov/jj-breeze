@@ -1,7 +1,7 @@
 # jj-breeze
 
-A stereo micro-pitch widener + slapback echo for Logic Pro (and any AU/VST3
-host). It sits between two well-known reference points:
+A stereo micro-pitch widener for Logic Pro (and any AU/VST3 host). It sits
+between two well-known reference points:
 
 - **Stillwell Audio CMX** — a "stereo microshifter": doubles a signal and
   applies tiny pitch shifts + delay to each side for width.
@@ -11,11 +11,11 @@ host). It sits between two well-known reference points:
 jj-breeze implements the same core widening technique — it is *not* a
 clone of either product's code or presets — but deliberately exposes far
 fewer controls than both, aiming for "turn one or two knobs and it sounds
-right." It also adds a separate slapback echo section, a Vibrato section,
-and a Warmth tone stage, plus "JJ Cale Vocal", "Cajun Moon Vocal" and a
-family of "JJ Dark Vocal" factory presets that lean into intimate/narrow,
-warm/dark, and deep/dark rather than wide (see Factory presets below) —
-hence the name, a nod to JJ Cale's "Call Me the Breeze."
+right." It also adds a Vibrato section and a Warmth tone stage, plus "JJ
+Cale Vocal", "Cajun Moon Vocal" and a family of "JJ Dark Vocal" factory
+presets that lean into intimate/narrow, warm/dark, and deep/dark rather
+than wide (see Factory presets below) — hence the name, a nod to JJ
+Cale's "Call Me the Breeze."
 
 ## How it works
 
@@ -37,7 +37,10 @@ Each channel runs through:
    just Mix up.
 2. **A short modulated delay** (`Source/DSP/ModulatedDelay.h`) with a slow,
    fixed-depth LFO wobble on top of the user's Delay L/R knobs, for the
-   "time-varying delay" movement both reference plugins have.
+   "time-varying delay" movement both reference plugins have. Delay L/R
+   covers 0–250ms — wide enough to also reach classic slapback-echo timing
+   directly (see the "Slapback Twang" preset below), not just the
+   subtle-width territory the original 0–40ms range covered.
 3. **A Focus crossover** — matching how Soundtoys MicroShift's Focus control
    actually works (not a low-cut on the wet signal): a low-pass/high-pass
    pair split the *input* at the Focus frequency, the low band passes through
@@ -47,17 +50,7 @@ Each channel runs through:
 
 The (crossover-recombined) wet signal is then blended with the dry signal via Mix.
 
-Separately, **a mono/centered slapback echo** (`Source/DSP/SlapbackDelay.h`)
-is summed on top of the output — a single (or, with feedback, a few) damped
-repeat(s), the way an old tape echo would sound. It's a genuinely separate
-effect from the width processing above (real slapback stays centered/dry;
-width effects are the opposite of that), which is why it's off by default
-(Slap Mix = 0%) and has its own three controls rather than interacting with
-Mix. Useful together for something in the direction of a JJ Cale-style vocal:
-keep the widener very subtle (or off) and use a light slapback instead — see
-the Controls table below for suggested starting values.
-
-Also separately, **a Vibrato section** (reuses `Source/DSP/ModulatedDelay.h`)
+Separately, **a Vibrato section** (reuses `Source/DSP/ModulatedDelay.h`)
 — continuous LFO-driven pitch wobble via a swept short delay (the classic
 "delay-based vibrato" technique, the same mechanism a Uni-Vibe's vibrato mode
 uses), rather than the Width knobs' *static* micro-detune. This is what gets
@@ -71,7 +64,7 @@ section existed.
 Finally, **a Warmth stage** (`Source/DSP/Warmth.h`) — a low-shelf body boost,
 then a low-pass filter, then gentle tanh soft-saturation, applied to the
 *fully-summed* output rather than being another independent lens on dry.
-Unlike Width/Slap/Vibrato, this isn't meant to be a special effect that
+Unlike Width/Vibrato, this isn't meant to be a special effect that
 stacks with the rest — it's a final tone-shaping pass for a darker, rounder,
 more "through an old tube amp" character. Off by default (Warmth Mix = 0%).
 The low-pass + saturation were added after analyzing `example/cajunmoon_vocal.mp3`
@@ -84,17 +77,24 @@ under Factory presets below) that isolated *pitch* and *low-mid fullness*,
 not top-end rolloff, as what actually separates a "dark" take from a
 "normal" one.
 
-All four sections — Shift, Slapback, Vibrato, Warmth — have their own lit
-on/off switch in the UI. Turning one off both bypasses its contribution to
-the output (its DSP keeps running internally, so re-enabling it is
-click-free) and collapses its knobs out of the way, so a section that isn't
-doing anything doesn't stay on screen distracting you.
+All three sections — Shift, Vibrato, Warmth — have their own lit on/off
+switch in the UI. Turning one off both bypasses its contribution to the
+output (its DSP keeps running internally, so re-enabling it is click-free)
+and collapses its knobs out of the way, so a section that isn't doing
+anything doesn't stay on screen distracting you.
 
-(An earlier version of this plugin had a fifth section, "Drop" — a separate,
-single-amount pitch shifter applied ahead of everything else. It was removed
-once Pitch L/R's range was widened to ±1200 cents, since at that point Shift
-covered the same ground and more, with independent per-channel Pitch *and*
-Delay rather than one shared amount.)
+(An earlier version of this plugin had a fourth section, "Drop" — a
+separate, single-amount pitch shifter applied ahead of everything else. It
+was removed once Pitch L/R's range was widened to ±1200 cents, since at
+that point Shift covered the same ground and more, with independent
+per-channel Pitch *and* Delay rather than one shared amount. A fifth
+section, a dedicated mono/centered "Slapback" echo, was removed the same
+way once Delay L/R was widened to 250ms: a single delayed repeat from
+Shift's own Delay, with Focus turned down so it covers the full band, now
+does the same job — see the "Slapback Twang" preset below and Delay L/R
+in Controls. The one thing the dedicated section had that Shift's plain
+delay tap doesn't: a feedback path for a *series* of decaying repeats
+rather than just one.)
 
 ## Controls
 
@@ -106,13 +106,10 @@ delay values you want directly.
 |---|---|---|
 | **Pitch L** | −1200 to +1200 cents | Pitch shift applied to the left channel. Default +300 (up) — see Factory presets/Default below for why. Skewed so fine micro-detune territory near 0 still gets most of the knob's travel, but the full ±1 octave is reachable. |
 | **Pitch R** | −1200 to +1200 cents | Pitch shift applied to the right channel. Default +300 (up), matching Pitch L — opposite signs instead gives the classic wide microshift; matching signs (as the default does) gives a mono-compatible pitch shift via delay offset alone, which is also how the dark/deep and bright/processed presets below work. |
-| **Delay L** | 0–40 ms | Base delay time on the left channel, with subtle built-in modulation. |
-| **Delay R** | 0–40 ms | Base delay time on the right channel. |
-| **Focus** | 20 Hz–10 kHz | Crossover point (both channels): everything below stays fully dry/untouched; only the band above gets pitch-shifted + delayed. Raise it to keep the width effect off the low end entirely; lower it (toward 20 Hz) to get a full-band pitch shift out of large Pitch L/R values instead of just the highs. |
+| **Delay L** | 0–250 ms | Base delay time on the left channel, with subtle built-in modulation. Subtle-width territory lives near the low end; classic slapback-echo timing (roughly 80–140 ms) and beyond is reachable further up, especially with Focus turned down (see "Slapback Twang" below). |
+| **Delay R** | 0–250 ms | Base delay time on the right channel. |
+| **Focus** | 20 Hz–10 kHz | Crossover point (both channels): everything below stays fully dry/untouched; only the band above gets pitch-shifted + delayed. Raise it to keep the width effect off the low end entirely; lower it (toward 20 Hz) to get a full-band pitch shift — or full-band delayed repeat — out of large Pitch L/R or Delay L/R values instead of just the highs. |
 | **Mix** | 0–100% | Dry/wet blend (both channels). |
-| **Slap Time** | 30–300 ms | Delay time of the slapback echo. Classic slapback territory is roughly 80–140 ms. |
-| **Slap Feedback** | 0–70% | How much the (damped) repeat feeds back for further repeats. 0% = a single slap; higher = a decaying series of repeats. |
-| **Slap Mix** | 0–100% | Level of the slapback echo. 0% by default (off) — this is a separate, opt-in effect. |
 | **Vibrato Rate** | 0.1–8 Hz | Speed of the pitch wobble. JJ Cale's "Cajun Moon" territory is slow, around 1–1.5 Hz. |
 | **Vibrato Depth** | 0–8 ms | How far the swept delay moves — bigger swing = more obvious pitch wobble. |
 | **Vibrato Mix** | 0–100% | Blend of the wobbled signal with dry. At 100% it's a true vibrato (fully replaces the static pitch); lower values give a wobbly chorus-like blend instead. 0% by default (off). |
@@ -121,8 +118,8 @@ delay values you want directly.
 | **Warmth Body** | 0–100% | Low-shelf boost at a fixed 150Hz corner, up to +6dB, applied before the low-pass. 0% = no boost. Restores the chest fullness a big pitch-down doesn't add on its own. |
 | **Warmth Mix** | 0–100% | Blend of the warmed (shelved + filtered + saturated) signal with the rest of the chain's output. 0% by default (off). |
 
-Each of the four sections (Shift, Slapback, Vibrato, Warmth) also has its own
-on/off switch, independent of its Mix knob — see "How it works" above.
+Each of the three sections (Shift, Vibrato, Warmth) also has its own on/off
+switch, independent of its Mix knob — see "How it works" above.
 
 ## Factory presets
 
@@ -133,20 +130,23 @@ field at the top of the plugin window) — no in-plugin preset UI needed:
 - **Default** — Pitch L/R +300 cents (matching sign — a mono-compatible
   pitch-up, not a wide microshift), Focus at its own 150Hz default, Mix 50%.
   See "JJ Dark Vocal (Up)" below for where +300 cents comes from.
-- **JJ Cale Vocal** — width turned way down (Pitch L/R ±4 ct, Mix 18%) rather
-  than off, for a touch of doubling glue without an obvious wide effect,
-  plus a single low-feedback slapback (Time 100 ms, Feedback 12%, Mix 20%)
-  instead of the width being the main event. Aimed at an intimate,
-  laid-back, close vocal rather than a wide/shimmery one.
+- **JJ Cale Vocal** — width turned way down (Pitch L/R ±4 ct) rather than
+  off, for a touch of doubling glue without an obvious wide effect, plus a
+  single delayed repeat from Shift's own widened Delay (95/105 ms, offset
+  L/R) instead of a separate slapback layer, with Focus dropped to 40 Hz so
+  the repeat covers essentially the whole vocal rather than just the highs,
+  and Mix at 30% (up from the old 18%, since Mix now carries both the width
+  and the echo). Aimed at an intimate, laid-back, close vocal rather than a
+  wide/shimmery one.
 - **Cajun Moon Vocal** — retuned against an actual reference recording
   (`example/cajunmoon_vocal.mp3`) rather than guessed. Analysing it
   (spectrogram, autocorrelation-based pitch tracking, stereo correlation)
   found no discrete slapback echo, no strong deliberate vibrato (the
   measured pitch movement was just natural vocal phrasing), and one clear,
   dominant trait: a heavily rolled-off, dark/warm tone. So the preset is now
-  width off, slapback off, a light touch of Vibrato (1.1 Hz, 3.5 ms depth,
-  15% mix — present but no longer the main event), and **Warmth on** (Tone
-  2.8 kHz, Drive 25%, Mix 70%) carrying the actual character.
+  width off, a light touch of Vibrato (1.1 Hz, 3.5 ms depth, 15% mix —
+  present but no longer the main event), and **Warmth on** (Tone 2.8 kHz,
+  Drive 25%, Mix 70%) carrying the actual character.
 - **JJ Dark Vocal** — originally built from a second, more targeted
   comparison: two takes of the same performance,
   `example/cajunmoon_vocal_vocal_1.mp3` and `example/cajunmoon_vocal_vocal_2.mp3`.
@@ -165,8 +165,8 @@ field at the top of the plugin window) — no in-plugin preset UI needed:
   turned down to 25 Hz and Mix at 100% (so the shift covers the full band,
   not just what's above the usual 150Hz Focus default), plus **Warmth on**
   with **Body** engaged (Tone 2.8 kHz, Drive 25%, Body 70%, Mix 70%) for a
-  lower, chestier voice. Slapback stays off, with the same light
-  Cajun-Moon-style vibrato as a finishing touch.
+  lower, chestier voice, with the same light Cajun-Moon-style vibrato as a
+  finishing touch.
 - **JJ Dark Vocal (Up)** — the corrected, literal vocal_1 (normal) →
   vocal_2 (processed) match. Cross-correlating resampled vocal_1 windows
   against time-aligned vocal_2 windows (which sidesteps the octave-error
@@ -188,13 +188,17 @@ field at the top of the plugin window) — no in-plugin preset UI needed:
   blended at 55% so the dry fundamental stays audible under the sub-octave
   layer, with Focus down low so the drop covers the full band. Reads more
   like an old octave pedal panned across the stereo field than a chorus-y
-  doubler. Slapback, Vibrato and Warmth all stay off so the technique reads
-  clearly on its own.
+  doubler. Vibrato and Warmth both stay off so the technique reads clearly
+  on its own.
 - **Slapback Twang** — the classic rockabilly move: a bright, dry signal
-  with nothing but one fairly hot slapback repeat (Feedback 25% for a
-  couple of decaying echoes rather than a single one). Everything else
-  (Shift, Vibrato, Warmth) stays off on purpose, so the top end stays
-  open/twangy rather than rolling dark.
+  with nothing but a single delayed repeat, now built from Shift alone
+  (Pitch L/R at 0 — no shift, repeat only — Delay L/R at 110/115 ms,
+  matching the old dedicated Slapback section's Time, Focus dropped to
+  25 Hz so the repeat covers the full band, Mix at 35%). The one thing
+  the old section had that this doesn't: a feedback path, so this reads
+  as one clean repeat rather than a couple of decaying echoes. Vibrato and
+  Warmth stay off on purpose, so the top end stays open/twangy rather than
+  rolling dark.
 - **Deep Baritone** — JJ Dark Vocal pushed further into effect territory
   rather than a natural-sounding voice: Pitch L/R at **−700 cents** (vs JJ
   Dark Vocal's −300) with Warmth's Body and Drive both turned up further,
@@ -206,10 +210,9 @@ To add more presets, extend the `std::array<Preset, N>` returned by
 `getPresets()` in `PluginProcessor.cpp` (and bump `N`).
 
 The LFO rate/depth on the width path's modulated delay, the pitch shifter's
-grain length, the slapback's feedback-path damping (fixed low-pass ~3.5 kHz,
-for a warm/tape-like repeat), and Vibrato's fixed 9ms center delay are all
-fixed internally rather than exposed as parameters — that's the main way
-this plugin stays simpler than its references.
+grain length, and Vibrato's fixed 9ms center delay are all fixed internally
+rather than exposed as parameters — that's the main way this plugin stays
+simpler than its references.
 
 ## Building
 
@@ -267,10 +270,9 @@ scripts/
   dist-macos.sh               Build + package AU/VST3/Standalone into a distributable zip
 Source/
   PluginProcessor.h/.cpp    Parameters (APVTS) + the per-block audio path
-  PluginEditor.h/.cpp       GUI: Shift knobs, plus separate Slapback, Vibrato and Warmth sections
+  PluginEditor.h/.cpp       GUI: Shift knobs, plus separate Vibrato and Warmth sections
   DSP/
     PitchShifter.h           Dual-tap crossfaded delay-line pitch shifter, ±1200 cents
-    ModulatedDelay.h         Short delay + LFO wobble (used by both Width and Vibrato)
-    SlapbackDelay.h          Mono feedback delay with damped repeats (echo)
+    ModulatedDelay.h         Short delay + LFO wobble (used by Width, Vibrato, and Shift's Delay L/R)
     Warmth.h                 Low-shelf body boost + low-pass + soft saturation tone stage on the final output
 ```

@@ -19,7 +19,14 @@ public:
     void prepare (double sampleRateIn)
     {
         sampleRate = sampleRateIn;
-        maxDelaySamples = std::max (64, (int) std::round (sampleRate * 0.1)); // 100 ms headroom
+        // 300 ms headroom: Shift's per-channel Delay L/R now goes up to
+        // 250ms (wide enough to cover the old dedicated Slapback section's
+        // range, folded into Shift instead of kept separate — see
+        // PluginProcessor.cpp), plus a little extra so the base delay can
+        // still be nudged by the LFO wobble near the top of its range.
+        // Vibrato's small swept delay reuses the same class with plenty of
+        // room to spare.
+        maxDelaySamples = std::max (64, (int) std::round (sampleRate * 0.3));
         buffer.assign ((size_t) maxDelaySamples, 0.0f);
         writePos = 0;
         lfoPhase = 0.0f;

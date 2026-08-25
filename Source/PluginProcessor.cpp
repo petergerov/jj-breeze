@@ -37,16 +37,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::crea
             .withLabel ("cents")
             .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " ct"; })));
 
+    // Range widened from the original 0-40ms (still the default-preset
+    // territory, and still skewed toward the low end so subtle-width
+    // territory isn't crammed into a sliver of the knob) to 0-250ms so
+    // Shift's per-channel Delay can also reach classic slapback-echo
+    // timing directly -- the same mechanism now covers both the subtle
+    // width wobble and (with Mix and a low Focus, see the dedicated
+    // Slapback-echo presets below) a discrete delayed repeat, once
+    // handled by a separate Slapback section removed in favor of this.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ParamIDs::delayL, 1 }, "Delay L",
-        juce::NormalisableRange<float> (0.0f, 40.0f, 0.01f), 15.0f,
+        juce::NormalisableRange<float> (0.0f, 250.0f, 0.01f, 0.3f), 15.0f,
         juce::AudioParameterFloatAttributes()
             .withLabel ("ms")
             .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " ms"; })));
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ParamIDs::delayR, 1 }, "Delay R",
-        juce::NormalisableRange<float> (0.0f, 40.0f, 0.01f), 15.0f,
+        juce::NormalisableRange<float> (0.0f, 250.0f, 0.01f, 0.3f), 15.0f,
         juce::AudioParameterFloatAttributes()
             .withLabel ("ms")
             .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " ms"; })));
@@ -61,30 +69,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ParamIDs::mix, 1 }, "Mix",
         juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f,
-        juce::AudioParameterFloatAttributes()
-            .withLabel ("%")
-            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
-
-    // Slapback echo: a separate, mono/centered discrete repeat, independent
-    // of the L/R width controls above. Off by default (Slap Mix = 0%) so it
-    // doesn't change the existing sound unless deliberately dialed in.
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { ParamIDs::slapTime, 1 }, "Slap Time",
-        juce::NormalisableRange<float> (30.0f, 300.0f, 0.1f), 110.0f,
-        juce::AudioParameterFloatAttributes()
-            .withLabel ("ms")
-            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " ms"; })));
-
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { ParamIDs::slapFeedback, 1 }, "Slap Feedback",
-        juce::NormalisableRange<float> (0.0f, 70.0f, 0.1f), 15.0f,
-        juce::AudioParameterFloatAttributes()
-            .withLabel ("%")
-            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
-
-    params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { ParamIDs::slapMix, 1 }, "Slap Mix",
-        juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f,
         juce::AudioParameterFloatAttributes()
             .withLabel ("%")
             .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
@@ -116,7 +100,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::crea
     // Warmth: a final tone stage (low-shelf body boost + low-pass + soft
     // saturation) on the fully summed output — for a darker, rounder
     // character none of the other sections provide. Off by default
-    // (Warmth Mix = 0%), like Slapback and Vibrato.
+    // (Warmth Mix = 0%), like Vibrato.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ParamIDs::warmthTone, 1 }, "Warmth Tone",
         juce::NormalisableRange<float> (500.0f, 12000.0f, 1.0f, 0.3f), 3500.0f,
@@ -152,9 +136,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::crea
         juce::ParameterID { ParamIDs::shiftOn, 1 }, "Shift On", true));
 
     params.push_back (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { ParamIDs::slapOn, 1 }, "Slapback On", false));
-
-    params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { ParamIDs::vibratoOn, 1 }, "Vibrato On", false));
 
     params.push_back (std::make_unique<juce::AudioParameterBool> (
@@ -181,8 +162,6 @@ void JJBreezeAudioProcessor::prepareToPlay (double sampleRate, int)
     rightVoice.lowBandFilter.prepare (spec);
     rightVoice.highBandFilter.prepare (spec);
 
-    slapback.prepare (sampleRate);
-
     vibratoL.prepare (sampleRate);
     vibratoR.prepare (sampleRate);
     // Fixed small center delay so the LFO-swept delay can move both up and
@@ -201,7 +180,6 @@ void JJBreezeAudioProcessor::releaseResources()
 {
     leftVoice.reset();
     rightVoice.reset();
-    slapback.reset();
     vibratoL.reset();
     vibratoR.reset();
     warmthL.reset();
@@ -237,9 +215,6 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const float delayRMs    = apvts.getRawParameterValue (ParamIDs::delayR)->load();
     const float focusHz     = apvts.getRawParameterValue (ParamIDs::focus)->load();
     const float mix         = apvts.getRawParameterValue (ParamIDs::mix)->load() * 0.01f;
-    const float slapTimeMs  = apvts.getRawParameterValue (ParamIDs::slapTime)->load();
-    const float slapFeedbk  = apvts.getRawParameterValue (ParamIDs::slapFeedback)->load() * 0.01f;
-    const float slapMixAmt  = apvts.getRawParameterValue (ParamIDs::slapMix)->load() * 0.01f;
     const float vibRateHz   = apvts.getRawParameterValue (ParamIDs::vibratoRate)->load();
     const float vibDepthMs  = apvts.getRawParameterValue (ParamIDs::vibratoDepth)->load();
     const float vibMixAmt   = apvts.getRawParameterValue (ParamIDs::vibratoMix)->load() * 0.01f;
@@ -251,7 +226,6 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // Section on/off — each section's DSP still runs below (for click-free
     // re-enabling), only its contribution to the output is gated here.
     const bool shiftIsOn   = apvts.getRawParameterValue (ParamIDs::shiftOn)->load() > 0.5f;
-    const bool slapIsOn    = apvts.getRawParameterValue (ParamIDs::slapOn)->load() > 0.5f;
     const bool vibratoIsOn = apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
     const bool warmthIsOn  = apvts.getRawParameterValue (ParamIDs::warmthOn)->load() > 0.5f;
 
@@ -267,9 +241,6 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     *leftVoice.highBandFilter.coefficients  = *highCoeffs;
     *rightVoice.lowBandFilter.coefficients  = *lowCoeffs;
     *rightVoice.highBandFilter.coefficients = *highCoeffs;
-
-    slapback.setTimeMs (slapTimeMs);
-    slapback.setFeedback (slapFeedbk);
 
     vibratoL.lfoRateHz  = vibRateHz;
     vibratoL.lfoDepthMs = vibDepthMs;
@@ -310,11 +281,6 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         highR = rightVoice.delay.processSample (highR);
         const float wetR = lowR + highR;
 
-        // Slapback is a separate, mono/centered echo — it's added on top of
-        // the width-processed output rather than crossfaded by Mix, so it
-        // reads as a distinct discrete repeat rather than part of the width.
-        const float slapEcho = slapback.processSample (0.5f * (dryL + dryR)) * slapMixAmt;
-
         // Vibrato: continuous LFO-swept delay (pitch wobble), independent of
         // the static Width detune — the "Cajun Moon"-style swirl.
         const float vibL = vibratoL.processSample (dryL);
@@ -329,10 +295,9 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         const float shiftMixR = shiftIsOn ? mix * (wetR - dryR) : 0.0f;
         const float vibMixL   = vibratoIsOn ? vibMixAmt * (vibL - dryL) : 0.0f;
         const float vibMixR   = vibratoIsOn ? vibMixAmt * (vibR - dryR) : 0.0f;
-        const float slapOut   = slapIsOn ? slapEcho : 0.0f;
 
-        const float outL = dryL + shiftMixL + vibMixL + slapOut;
-        const float outR = dryR + shiftMixR + vibMixR + slapOut;
+        const float outL = dryL + shiftMixL + vibMixL;
+        const float outR = dryR + shiftMixR + vibMixR;
 
         // Warmth is a final tone stage on the fully-summed output (low-pass
         // + soft saturation), not another independent "lens" on dry — it's
@@ -353,18 +318,26 @@ juce::AudioProcessorEditor* JJBreezeAudioProcessor::createEditor()
 
 const std::array<JJBreezeAudioProcessor::Preset, 8>& JJBreezeAudioProcessor::getPresets()
 {
-    // pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix, vibratoRate, vibratoDepth, vibratoMix, warmthTone, warmthDrive, warmthBody, warmthMix, shiftOn, slapOn, vibratoOn, warmthOn
+    // pitchL, pitchR, delayL, delayR, focus, mix, vibratoRate, vibratoDepth, vibratoMix, warmthTone, warmthDrive, warmthBody, warmthMix, shiftOn, vibratoOn, warmthOn
     static const std::array<Preset, 8> presets { {
         // Pitch L/R +300ct (matching sign, not opposite — a mono-compatible
         // pitch-up rather than a wide microshift) matches Pitch L/R's own
         // parameter default; see createParameterLayout() for why.
-        { "Default",       300.0f, 300.0f, 15.0f, 15.0f, 150.0f, 50.0f, 110.0f, 15.0f,  0.0f, 1.2f, 3.0f,  0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  false, false, false },
+        { "Default",       300.0f, 300.0f, 15.0f, 15.0f, 150.0f, 50.0f, 1.2f, 3.0f,  0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  false, false },
 
         // A laid-back, intimate vocal in the JJ Cale direction: the width
         // is turned way down (a few cents, low mix) rather than off, so
-        // there's still some doubling glue, plus a single, low-feedback
-        // slapback repeat instead of the wide microshift being the star.
-        { "JJ Cale Vocal",  4.0f,  -4.0f,  8.0f, 10.0f, 300.0f, 18.0f, 100.0f, 12.0f, 20.0f, 1.2f, 3.0f,  0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  true,  false, false },
+        // there's still some doubling glue. What used to be a separate,
+        // low-feedback slapback repeat (Time 100ms, Feedback 12%, Mix 20%)
+        // is now a single delayed repeat from Shift's own Delay L/R instead
+        // (Delay widened to 95/105ms, slightly offset like the old preset's
+        // 8/10ms was, and Focus dropped to 40Hz so the repeat covers
+        // essentially the whole vocal rather than just what's above the
+        // old 300Hz width-only crossover — a real slapback echo isn't
+        // just-the-highs). Mix raised from 18% to 30% since it now carries
+        // both the subtle width and the echo, where before those were two
+        // independently-mixed layers.
+        { "JJ Cale Vocal",  4.0f,  -4.0f,  95.0f, 105.0f, 40.0f, 30.0f, 1.2f, 3.0f,  0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  false, false },
 
         // "Cajun Moon"-style warmth: retuned against an actual reference
         // recording (see example/cajunmoon_vocal.mp3) rather than guessed.
@@ -372,11 +345,11 @@ const std::array<JJBreezeAudioProcessor::Preset, 8>& JJBreezeAudioProcessor::get
         // strong deliberate vibrato — the measured pitch movement was just
         // natural vocal phrasing, not a steady ~1-2Hz wobble, and (3) the
         // one clear, dominant trait: a heavily rolled-off, dark/warm tone
-        // (only ~1% of spectral energy above 2kHz). So width and slapback
-        // stay off, vibrato is now a light touch rather than the main
-        // event, and Warmth — not vibrato — is what actually carries the
-        // "Cajun Moon" character here.
-        { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 0.0f, 70.0f, false, false, true, true },
+        // (only ~1% of spectral energy above 2kHz). So width stays off,
+        // vibrato is a light touch rather than the main event, and Warmth
+        // — not vibrato — is what actually carries the "Cajun Moon"
+        // character here.
+        { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 0.0f, 70.0f, false, true, true },
 
         // "JJ Dark Vocal": originally built by comparing two takes of the
         // same performance (example/cajunmoon_vocal_vocal_1.mp3 vs
@@ -393,7 +366,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 8>& JJBreezeAudioProcessor::get
         // pitch-down covers the full band, not just what's above the
         // default 150Hz crossover point. Warmth's Body control adds the
         // low-mid "chest" fullness the original analysis found.
-        { "JJ Dark Vocal", -300.0f, -300.0f, 15.0f, 15.0f, 25.0f, 100.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 70.0f, 70.0f, true, false, true, true },
+        { "JJ Dark Vocal", -300.0f, -300.0f, 15.0f, 15.0f, 25.0f, 100.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 70.0f, 70.0f, true, true, true },
 
         // "JJ Dark Vocal (Up)": the corrected, literal match to the
         // vocal_1 (normal) -> vocal_2 (processed) direction — cross-
@@ -409,7 +382,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 8>& JJBreezeAudioProcessor::get
         // not above it — unlike "JJ Dark Vocal" above, this preset doesn't
         // add chest fullness. Focus turned down for the same full-band
         // reason as JJ Dark Vocal.
-        { "JJ Dark Vocal (Up)", 300.0f, 300.0f, 15.0f, 15.0f, 25.0f, 100.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 0.0f, 70.0f, true, false, true, true },
+        { "JJ Dark Vocal (Up)", 300.0f, 300.0f, 15.0f, 15.0f, 25.0f, 100.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 0.0f, 70.0f, true, true, true },
 
         // "Octave Width": a stereo width effect using Shift's independent
         // L/R at the full-octave end of its range rather than the
@@ -420,16 +393,25 @@ const std::array<JJBreezeAudioProcessor::Preset, 8>& JJBreezeAudioProcessor::get
         // low so the drop covers the full band, not just the highs. A
         // different flavor of "wide" than Default's cents-level detune:
         // more like an old octave pedal panned across the stereo field
-        // than a chorus-y doubler. Slapback, Vibrato and Warmth all stay
-        // off so the technique reads clearly on its own.
-        { "Octave Width", -1200.0f, 0.0f, 15.0f, 15.0f, 25.0f, 55.0f, 100.0f, 10.0f, 0.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, true, false, false, false },
+        // than a chorus-y doubler. Vibrato and Warmth both stay off so the
+        // technique reads clearly on its own.
+        { "Octave Width", -1200.0f, 0.0f, 15.0f, 15.0f, 25.0f, 55.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, true, false, false },
 
         // "Slapback Twang": the classic rockabilly move — a bright, dry
-        // signal with nothing but a single, fairly hot slapback repeat
-        // (Feedback 25% for a couple of decaying echoes rather than one).
-        // Everything else stays off on purpose, including Warmth, so the
+        // signal with nothing but a single delayed repeat. Previously a
+        // dedicated Slapback section (Time 110ms, Feedback 25%, Mix 35%,
+        // Shift itself off since it contributed nothing at Mix 0%); now
+        // built directly from Shift instead (the section that section's
+        // range was folded into) — Pitch L/R at 0 (no shift, repeat only),
+        // Delay L/R at 110/115ms (matching the old Slap Time, offset
+        // slightly L/R), Focus dropped to 25Hz so the repeat covers the
+        // full band like a real slapback rather than just the highs, Mix
+        // at 35% matching the old Slap Mix. One real difference: Shift's
+        // Delay is a single tap with no feedback path, so this is now a
+        // single clean repeat rather than the old preset's couple of
+        // decaying echoes. Vibrato and Warmth stay off on purpose, so the
         // top end stays open/twangy rather than rolling dark.
-        { "Slapback Twang", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 110.0f, 25.0f, 35.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, false, true, false, false },
+        { "Slapback Twang", 0.0f, 0.0f, 110.0f, 115.0f, 25.0f, 35.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, true, false, false },
 
         // "Deep Baritone": JJ Dark Vocal pushed further into effect
         // territory rather than a natural-sounding voice — Pitch L/R at
@@ -438,7 +420,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 8>& JJBreezeAudioProcessor::get
         // trailer low end. No Vibrato here (unlike the other dark/warm
         // presets) — a wobble reads as comic rather than menacing at this
         // depth.
-        { "Deep Baritone", -700.0f, -700.0f, 15.0f, 15.0f, 25.0f, 100.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 0.0f, 2500.0f, 35.0f, 85.0f, 80.0f, true, false, false, true },
+        { "Deep Baritone", -700.0f, -700.0f, 15.0f, 15.0f, 25.0f, 100.0f, 1.1f, 3.5f, 0.0f, 2500.0f, 35.0f, 85.0f, 80.0f, true, false, true },
     } };
     return presets;
 }
@@ -476,9 +458,6 @@ void JJBreezeAudioProcessor::applyPreset (int index)
     setParam (ParamIDs::delayR,       preset.delayR);
     setParam (ParamIDs::focus,        preset.focus);
     setParam (ParamIDs::mix,          preset.mix);
-    setParam (ParamIDs::slapTime,     preset.slapTime);
-    setParam (ParamIDs::slapFeedback, preset.slapFeedback);
-    setParam (ParamIDs::slapMix,      preset.slapMix);
     setParam (ParamIDs::vibratoRate,  preset.vibratoRate);
     setParam (ParamIDs::vibratoDepth, preset.vibratoDepth);
     setParam (ParamIDs::vibratoMix,   preset.vibratoMix);
@@ -488,7 +467,6 @@ void JJBreezeAudioProcessor::applyPreset (int index)
     setParam (ParamIDs::warmthMix,    preset.warmthMix);
 
     setParam (ParamIDs::shiftOn,   preset.shiftOn   ? 1.0f : 0.0f);
-    setParam (ParamIDs::slapOn,    preset.slapOn    ? 1.0f : 0.0f);
     setParam (ParamIDs::vibratoOn, preset.vibratoOn ? 1.0f : 0.0f);
     setParam (ParamIDs::warmthOn,  preset.warmthOn  ? 1.0f : 0.0f);
 }

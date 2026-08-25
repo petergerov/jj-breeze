@@ -7,7 +7,6 @@
 
 #include "DSP/PitchShifter.h"
 #include "DSP/ModulatedDelay.h"
-#include "DSP/SlapbackDelay.h"
 #include "DSP/Warmth.h"
 
 namespace ParamIDs
@@ -18,9 +17,6 @@ namespace ParamIDs
     static const juce::String delayR       = "delayR";       // ms
     static const juce::String focus        = "focus";        // Hz, crossover point (below = always dry)
     static const juce::String mix          = "mix";          // 0..1
-    static const juce::String slapTime     = "slapTime";     // ms
-    static const juce::String slapFeedback = "slapFeedback"; // 0..1
-    static const juce::String slapMix      = "slapMix";      // 0..1
     static const juce::String vibratoRate  = "vibratoRate";  // Hz
     static const juce::String vibratoDepth = "vibratoDepth"; // ms
     static const juce::String vibratoMix   = "vibratoMix";   // 0..1
@@ -37,7 +33,6 @@ namespace ParamIDs
     // output entirely (its DSP still runs, so re-enabling is click-free)
     // and drives the UI's lit toggle + collapsed/expanded layout.
     static const juce::String shiftOn    = "shiftOn";
-    static const juce::String slapOn     = "slapOn";
     static const juce::String vibratoOn  = "vibratoOn";
     static const juce::String warmthOn   = "warmthOn";
 }
@@ -86,10 +81,10 @@ private:
     struct Preset
     {
         const char* name;
-        float pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix,
+        float pitchL, pitchR, delayL, delayR, focus, mix,
               vibratoRate, vibratoDepth, vibratoMix,
               warmthTone, warmthDrive, warmthBody, warmthMix;
-        bool shiftOn, slapOn, vibratoOn, warmthOn;
+        bool shiftOn, vibratoOn, warmthOn;
     };
 
     static const std::array<Preset, 8>& getPresets();
@@ -130,7 +125,6 @@ private:
     };
 
     ChannelVoice leftVoice, rightVoice;
-    SlapbackDelay slapback; // mono, centered — separate from the L/R width voices above
 
     // Vibrato: continuous LFO-driven pitch modulation via a swept short
     // delay (the classic "delay-based vibrato" technique — reuses
