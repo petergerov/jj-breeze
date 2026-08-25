@@ -41,14 +41,24 @@ if [[ -z "$VERSION" ]]; then
     exit 1
 fi
 
-echo "==> Building jj-breeze $VERSION (Release)"
+# The artefact filenames follow PRODUCT_NAME in CMakeLists.txt, not the repo
+# or CMake target name — read it rather than hardcoding "jj-breeze", so a
+# rename there can't silently leave this script looking for (and packaging)
+# a stale build under the old name.
+PRODUCT_NAME="$(grep -Eo 'PRODUCT_NAME "[^"]*"' CMakeLists.txt | sed -E 's/PRODUCT_NAME "(.*)"/\1/')"
+if [[ -z "$PRODUCT_NAME" ]]; then
+    echo "error: could not determine PRODUCT_NAME from CMakeLists.txt" >&2
+    exit 1
+fi
+
+echo "==> Building $PRODUCT_NAME $VERSION (Release)"
 cmake -B "$BUILD_DIR" -G Xcode -DCMAKE_BUILD_TYPE=Release
 cmake --build "$BUILD_DIR" --config Release
 
 ARTEFACTS_DIR="$BUILD_DIR/jj_breeze_artefacts/Release"
-AU_PATH="$ARTEFACTS_DIR/AU/jj-breeze.component"
-VST3_PATH="$ARTEFACTS_DIR/VST3/jj-breeze.vst3"
-STANDALONE_PATH="$ARTEFACTS_DIR/Standalone/jj-breeze.app"
+AU_PATH="$ARTEFACTS_DIR/AU/$PRODUCT_NAME.component"
+VST3_PATH="$ARTEFACTS_DIR/VST3/$PRODUCT_NAME.vst3"
+STANDALONE_PATH="$ARTEFACTS_DIR/Standalone/$PRODUCT_NAME.app"
 
 for path in "$AU_PATH" "$VST3_PATH" "$STANDALONE_PATH"; do
     if [[ ! -e "$path" ]]; then
