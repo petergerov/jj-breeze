@@ -447,6 +447,11 @@ private:
     juce::TooltipWindow tooltipWindow { this, 500 };
 
     juce::Label titleLabel;
+    // Tiny build-info readout in the bottom margin, next to the corner
+    // screws — just enough to tell which build you're looking at without
+    // competing visually with the header. setStateInformation() presets
+    // don't carry a version, so this is the only place it shows at all.
+    juce::Label versionLabel;
     juce::Label shiftSectionLabel;
     juce::Label vibratoSectionLabel;
     juce::Label warmthSectionLabel;

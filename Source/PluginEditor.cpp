@@ -50,6 +50,13 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     titleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (titleLabel);
 
+    versionLabel.setText ("v" JucePlugin_VersionString, juce::dontSendNotification);
+    versionLabel.setFont (juce::Font (juce::FontOptions (9.5f, juce::Font::plain)).withExtraKerningFactor (0.03f));
+    versionLabel.setColour (juce::Label::textColourId, textMuted.withAlpha (0.55f));
+    versionLabel.setJustificationType (juce::Justification::centred);
+    versionLabel.setTooltip (JucePlugin_Name " " JucePlugin_VersionString);
+    addAndMakeVisible (versionLabel);
+
     // Preset picker: factory presets (JJBreezeAudioProcessor::getPresets())
     // plus user presets saved from this editor - previously only the
     // factory list existed, and only reachable through the host's own
@@ -621,5 +628,16 @@ void JJBreezeAudioProcessorEditor::resized()
         {
             warmthPanelBounds = fullLabelRow.expanded (6, 4);
         }
+    }
+
+    // Version readout, centred in the bottom margin between the two bottom
+    // corner screws — computed from the untouched full bounds rather than
+    // the already-consumed `area`, same as drawScrew() in paint().
+    {
+        const auto full = getLocalBounds();
+        constexpr int stripHeight = 14;
+        constexpr int sideClearance = 50; // clears both bottom corner screws
+        versionLabel.setBounds (full.getX() + sideClearance, full.getBottom() - stripHeight - 8,
+                                 full.getWidth() - sideClearance * 2, stripHeight);
     }
 }
