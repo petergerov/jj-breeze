@@ -24,13 +24,13 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     titleLabel.setFont (juce::Font (juce::FontOptions ("Avenir Next Condensed", 24.0f, juce::Font::bold))
                              .withExtraKerningFactor (0.05f));
     titleLabel.setColour (juce::Label::textColourId, textLight);
-    titleLabel.setJustificationType (juce::Justification::centredLeft);
+    titleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (titleLabel);
 
     subtitleLabel.setText ("STEREO WIDENER \xc2\xb7 SLAPBACK ECHO \xc2\xb7 VIBRATO", juce::dontSendNotification);
     subtitleLabel.setFont (juce::Font (juce::FontOptions ("Menlo", 10.5f, juce::Font::plain)).withExtraKerningFactor (0.04f));
     subtitleLabel.setColour (juce::Label::textColourId, textMuted);
-    subtitleLabel.setJustificationType (juce::Justification::centredLeft);
+    subtitleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (subtitleLabel);
 
     addAndMakeVisible (pitchLKnob);
@@ -111,21 +111,22 @@ void JJBreezeAudioProcessorEditor::timerCallback()
 
 void JJBreezeAudioProcessorEditor::drawScrew (juce::Graphics& g, juce::Point<float> centre) const
 {
-    constexpr float r = 5.0f;
+    constexpr float r = 8.0f;
     const auto bounds = juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (centre);
     juce::ColourGradient grad (metalLight, bounds.getX(), bounds.getY(),
                                 metalDark, bounds.getRight(), bounds.getBottom(), false);
     g.setGradientFill (grad);
     g.fillEllipse (bounds);
     g.setColour (chassisBottom.withAlpha (0.8f));
-    g.drawEllipse (bounds, 1.0f);
-    g.drawLine ({ centre.translated (-3.2f, 1.6f), centre.translated (3.2f, -1.6f) }, 1.2f);
+    g.drawEllipse (bounds, 1.4f);
+    g.drawLine ({ centre.translated (-5.0f, 2.6f), centre.translated (5.0f, -2.6f) }, 1.8f);
 }
 
 // Shared with resized() so panels, rules and knob rows all land in the same place.
 static constexpr int headerHeight = 68;
 static constexpr int outerPadding = 20; // horizontal margin
-static constexpr int topBottomPadding = 12;
+static constexpr int topPadding = 12;
+static constexpr int bottomPadding = 36; // extra clearance so the bottom corner screws stay visible
 static constexpr int sectionLabelHeight = 26;
 static constexpr int sectionGap = 14; // vertical gap between one section's card and the next
 static constexpr int toggleWidth = 34;
@@ -161,13 +162,6 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (metalLight.withAlpha (0.15f));
     g.drawHorizontalLine ((int) header.getBottom() - 1, 0.0f, bounds.getWidth());
 
-    // Power LED next to the title.
-    const auto ledCentre = juce::Point<float> (24.0f, header.getCentreY() - 2.0f);
-    g.setColour (accent.withAlpha (0.25f));
-    g.fillEllipse (juce::Rectangle<float> (14.0f, 14.0f).withCentre (ledCentre));
-    g.setColour (accent);
-    g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (ledCentre));
-
     // Section panels — recessed metal cards that visually group each knob
     // row (or, when the section's toggle is off, just its collapsed
     // header bar).
@@ -192,7 +186,7 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
     drawSection (vibratoSectionLabel, vibratoPanelBounds);
 
     // Mounting screws at the four corners of the chassis.
-    const float inset = 14.0f;
+    const float inset = 17.0f;
     const auto full = getLocalBounds().toFloat();
     drawScrew (g, { inset, inset });
     drawScrew (g, { full.getRight() - inset, inset });
@@ -204,13 +198,18 @@ void JJBreezeAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
 
+    // Full header width for the centred title/subtitle — the power LED is
+    // drawn separately (in paint()) off to the left and doesn't need room
+    // carved out of the text layout.
     auto header = area.removeFromTop (headerHeight).reduced (18, 10);
-    header.removeFromLeft (18); // room for the power LED
     titleLabel.setBounds (header.removeFromTop (28));
     subtitleLabel.setBounds (header);
 
     area.removeFromTop (8); // gap before the knob sections
-    area.reduce (outerPadding, topBottomPadding);
+    area.removeFromLeft (outerPadding);
+    area.removeFromRight (outerPadding);
+    area.removeFromTop (topPadding);
+    area.removeFromBottom (bottomPadding);
 
     const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
     const bool slapOn    = processorRef.apvts.getRawParameterValue (ParamIDs::slapOn)->load()    > 0.5f;
