@@ -329,21 +329,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // Pitch L/R +300ct (matching sign, not opposite — a mono-compatible
         // pitch-up rather than a wide microshift) matches Pitch L/R's own
         // parameter default; see createParameterLayout() for why.
-        { "Default", 300.0f, 300.0f, 23.0f, 37.0f, 25.0f, 50.0f, 1.2f, 3.0f,  0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  true, true },
-
-        // A laid-back, intimate vocal in the JJ Cale direction: the width
-        // is turned way down (a few cents, low mix) rather than off, so
-        // there's still some doubling glue. What used to be a separate,
-        // low-feedback slapback repeat (Time 100ms, Feedback 12%, Mix 20%)
-        // is now a single delayed repeat from Shift's own Delay L/R instead
-        // (Delay widened to 95/105ms, slightly offset like the old preset's
-        // 8/10ms was, and Focus dropped to 40Hz so the repeat covers
-        // essentially the whole vocal rather than just what's above the
-        // old 300Hz width-only crossover — a real slapback echo isn't
-        // just-the-highs). Mix raised from 18% to 30% since it now carries
-        // both the subtle width and the echo, where before those were two
-        // independently-mixed layers.
-        { "JJ Cale Vocal",  4.0f,  -4.0f,  95.0f, 105.0f, 40.0f, 30.0f, 1.2f, 3.0f,  0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  false, false },
+        { "Default", 300.0f, 300.0f, 23.0f, 37.0f, 25.0f, 13.0f, 1.2f, 3.0f,  15.0f,  3500.0f, 20.0f, 0.0f, 20.0f, true,  true, true },
 
         // "Cajun Moon"-style warmth: retuned against an actual reference
         // recording (see example/cajunmoon_vocal.mp3) rather than guessed.
@@ -355,7 +341,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // vibrato is a light touch rather than the main event, and Warmth
         // — not vibrato — is what actually carries the "Cajun Moon"
         // character here.
-        { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 0.0f, 70.0f, false, true, true },
+        {  "Cajun Moon Vocal", 300.0f, 300.0f, 23.0f, 37.0f, 25.0f, 13.0f, 1.2f, 3.0f,  15.0f,  3500.0f, 20.0f, 0.0f, 20.0f, true,  true, true },
 
         // "JJ Dark Vocal": originally built by comparing two takes of the
         // same performance (example/cajunmoon_vocal_vocal_1.mp3 vs
@@ -372,7 +358,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // pitch-down covers the full band, not just what's above the
         // default 150Hz crossover point. Warmth's Body control adds the
         // low-mid "chest" fullness the original analysis found.
-        { "JJ Dark Vocal", -300.0f, -300.0f, 15.0f, 15.0f, 25.0f, 100.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 70.0f, 70.0f, true, true, true },
+        { "JJ Dark Vocal", -300.0f, -300.0f, 15.0f, 15.0f, 25.0f, 15.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 70.0f, 15.0f, true, true, true },
 
         // "Octave Width": a stereo width effect using Shift's independent
         // L/R at the full-octave end of its range rather than the
@@ -385,7 +371,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // more like an old octave pedal panned across the stereo field
         // than a chorus-y doubler. Vibrato and Warmth both stay off so the
         // technique reads clearly on its own.
-        { "Octave Width", -1200.0f, 0.0f, 15.0f, 15.0f, 25.0f, 55.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, true, false, false },
+        { "Octave Width", -1200.0f, 0.0f, 15.0f, 15.0f, 25.0f, 15.0f, 1.2f, 3.0f, 15.0f, 3500.0f, 20.0f, 0.0f, 15.0f, true, false, true },
 
         // "Slapback Twang": the classic rockabilly move — a bright, dry
         // signal with nothing but a single delayed repeat. Previously a
@@ -410,7 +396,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // trailer low end. No Vibrato here (unlike the other dark/warm
         // presets) — a wobble reads as comic rather than menacing at this
         // depth.
-        { "Deep Baritone", -700.0f, -700.0f, 15.0f, 15.0f, 25.0f, 100.0f, 1.1f, 3.5f, 0.0f, 2500.0f, 35.0f, 85.0f, 80.0f, true, false, true },
+        { "Deep Baritone", -700.0f, -700.0f, 15.0f, 15.0f, 25.0f, 20.0f, 1.1f, 3.5f, 0.0f, 2500.0f, 35.0f, 85.0f, 70.0f, true, false, true },
 
         // "Lies": built from analyzing example/lies_1.mp3 (dry) against
         // example/lies_2.mp3 (processed) the same way JJ Dark Vocal was —
@@ -431,7 +417,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // 1288Hz) needed no separate Warmth stage — an upward pitch shift
         // this size produces that on its own. No vibrato or delay signature
         // was found, so both stay off/default.
-        { "Lies", 0.0f, 470.0f, 15.0f, 15.0f, 25.0f, 90.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, true, false, false },
+        { "Lies", 0.0f, 470.0f, 15.0f, 15.0f, 25.0f, 25.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, true, false, false },
     } };
     return presets;
 }
