@@ -6,13 +6,13 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     : AudioProcessorEditor (&p),
       processorRef (p),
       pitchLKnob (p.apvts, ParamIDs::pitchL, "PITCH L",
-                  "Left-channel pitch shift ±1200 ct = ±1 octave. A few cents gives classic"
+                  "Left-channel pitch shift 1200 ct = 1 octave. A few cents gives classic"
                   "microshift width; larger values (with Focus turned down) give a big pitch-shifted voice."),
       pitchRKnob (p.apvts, ParamIDs::pitchR, "PITCH R",
                   "Right-channel pitch shift, independent of Pitch L - opposite signs widen, matching "
                   "signs shift the whole signal up or down."),
       delayLKnob (p.apvts, ParamIDs::delayL, "DELAY L",
-                  "Left-channel delay time (0–250ms) for the modulated delay tap. Short times add "
+                  "Left-channel delay time (0-250ms) for the modulated delay tap. Short times add "
                   "subtle width; times above ~80ms read as a slapback echo."),
       delayRKnob (p.apvts, ParamIDs::delayR, "DELAY R",
                   "Right-channel delay time, independent of Delay L."),

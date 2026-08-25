@@ -202,7 +202,7 @@ public:
 private:
     // Kept narrow on purpose (this plugin's own window is only 480px wide
     // by default) — see the comment on getTooltipBounds() above.
-    static constexpr int tooltipMaxWidth = 200;
+    static constexpr int tooltipMaxWidth = 230;
     static constexpr int tooltipPadX = 10;
     static constexpr int tooltipPadY = 8;
 
@@ -214,7 +214,7 @@ private:
         juce::AttributedString s;
         s.setWordWrap (juce::AttributedString::WordWrap::byWord);
         s.setJustification (juce::Justification::topLeft);
-        s.append (text, juce::FontOptions (12.5f, juce::Font::plain), GearPalette::textLight);
+        s.append (text, juce::FontOptions (14.5f, juce::Font::plain), GearPalette::textLight);
 
         juce::TextLayout tl;
         tl.createLayoutWithBalancedLineLengths (s, (float) tooltipMaxWidth);
