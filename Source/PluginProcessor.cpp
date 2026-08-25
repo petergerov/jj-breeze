@@ -341,7 +341,28 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // vibrato is a light touch rather than the main event, and Warmth
         // — not vibrato — is what actually carries the "Cajun Moon"
         // character here.
-        {  "Cajun Moon Vocal", 300.0f, 300.0f, 23.0f, 37.0f, 25.0f, 13.0f, 1.2f, 3.0f,  15.0f,  3500.0f, 20.0f, 0.0f, 20.0f, true,  true, true },
+        {  "Cajun Moon - J.J.Cale", 300.0f, 300.0f, 23.0f, 37.0f, 25.0f, 13.0f, 1.2f, 3.0f,  15.0f,  3500.0f, 20.0f, 0.0f, 20.0f, true,  true, true },
+
+        // "Lies": built from analyzing example/lies_1.mp3 (dry) against
+        // example/lies_2.mp3 (processed) the same way JJ Dark Vocal was —
+        // autocorrelation pitch-tracking found the right channel shifted up
+        // by a measured +470 cents (154Hz to 202Hz median), while the left
+        // channel's level collapsed to near-total digital silence in
+        // lies_2. That silenced channel isn't reproducible here (Shift has
+        // no per-channel pan/gain, only pitch and delay), so this preset
+        // approximates the same *asymmetry* instead, Octave-Width-style:
+        // Pitch L stays at 0 (matching how close lies_1's L and R already
+        // were — only one side got the extreme treatment) while Pitch R
+        // carries the measured +470ct alone, one channel left recognizable
+        // against a wildly pitched-up other one. Focus dropped low so the
+        // shift covers the full band rather than just the highs, and Mix
+        // pushed higher than Octave Width's 55% since here the effect is
+        // meant to dominate, not just widen. The large brightness increase
+        // measured between the two files (spectral centroid 682Hz to
+        // 1288Hz) needed no separate Warmth stage — an upward pitch shift
+        // this size produces that on its own. No vibrato or delay signature
+        // was found, so both stay off/default.
+        { "Lies - J.J.Cale", 0.0f, 470.0f, 15.0f, 15.0f, 25.0f, 25.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, true, false, false },
 
         // "JJ Dark Vocal": originally built by comparing two takes of the
         // same performance (example/cajunmoon_vocal_vocal_1.mp3 vs
@@ -358,7 +379,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // pitch-down covers the full band, not just what's above the
         // default 150Hz crossover point. Warmth's Body control adds the
         // low-mid "chest" fullness the original analysis found.
-        { "JJ Dark Vocal", -300.0f, -300.0f, 15.0f, 15.0f, 25.0f, 15.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 70.0f, 15.0f, true, true, true },
+        { "Dark Vocal - J.J.Cale", -300.0f, -300.0f, 15.0f, 15.0f, 25.0f, 15.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 70.0f, 15.0f, true, true, true },
 
         // "Octave Width": a stereo width effect using Shift's independent
         // L/R at the full-octave end of its range rather than the
@@ -397,27 +418,6 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // presets) — a wobble reads as comic rather than menacing at this
         // depth.
         { "Deep Baritone", -700.0f, -700.0f, 15.0f, 15.0f, 25.0f, 20.0f, 1.1f, 3.5f, 0.0f, 2500.0f, 35.0f, 85.0f, 70.0f, true, false, true },
-
-        // "Lies": built from analyzing example/lies_1.mp3 (dry) against
-        // example/lies_2.mp3 (processed) the same way JJ Dark Vocal was —
-        // autocorrelation pitch-tracking found the right channel shifted up
-        // by a measured +470 cents (154Hz to 202Hz median), while the left
-        // channel's level collapsed to near-total digital silence in
-        // lies_2. That silenced channel isn't reproducible here (Shift has
-        // no per-channel pan/gain, only pitch and delay), so this preset
-        // approximates the same *asymmetry* instead, Octave-Width-style:
-        // Pitch L stays at 0 (matching how close lies_1's L and R already
-        // were — only one side got the extreme treatment) while Pitch R
-        // carries the measured +470ct alone, one channel left recognizable
-        // against a wildly pitched-up other one. Focus dropped low so the
-        // shift covers the full band rather than just the highs, and Mix
-        // pushed higher than Octave Width's 55% since here the effect is
-        // meant to dominate, not just widen. The large brightness increase
-        // measured between the two files (spectral centroid 682Hz to
-        // 1288Hz) needed no separate Warmth stage — an upward pitch shift
-        // this size produces that on its own. No vibrato or delay signature
-        // was found, so both stay off/default.
-        { "Lies", 0.0f, 470.0f, 15.0f, 15.0f, 25.0f, 25.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, true, false, false },
     } };
     return presets;
 }
