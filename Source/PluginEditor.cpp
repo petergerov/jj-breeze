@@ -16,7 +16,10 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
       slapMixKnob      (p.apvts, ParamIDs::slapMix,      "MIX"),
       vibratoRateKnob  (p.apvts, ParamIDs::vibratoRate,  "RATE"),
       vibratoDepthKnob (p.apvts, ParamIDs::vibratoDepth, "DEPTH"),
-      vibratoMixKnob   (p.apvts, ParamIDs::vibratoMix,   "MIX")
+      vibratoMixKnob   (p.apvts, ParamIDs::vibratoMix,   "MIX"),
+      warmthToneKnob   (p.apvts, ParamIDs::warmthTone,   "TONE"),
+      warmthDriveKnob  (p.apvts, ParamIDs::warmthDrive,  "DRIVE"),
+      warmthMixKnob    (p.apvts, ParamIDs::warmthMix,    "MIX")
 {
     setLookAndFeel (&retroLookAndFeel);
 
@@ -27,7 +30,7 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     titleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (titleLabel);
 
-    subtitleLabel.setText ("STEREO WIDENER \xc2\xb7 SLAPBACK ECHO \xc2\xb7 VIBRATO", juce::dontSendNotification);
+    subtitleLabel.setText ("STEREO WIDENER \xc2\xb7 SLAPBACK ECHO \xc2\xb7 VIBRATO \xc2\xb7 WARMTH", juce::dontSendNotification);
     subtitleLabel.setFont (juce::Font (juce::FontOptions ("Menlo", 10.5f, juce::Font::plain)).withExtraKerningFactor (0.04f));
     subtitleLabel.setColour (juce::Label::textColourId, textMuted);
     subtitleLabel.setJustificationType (juce::Justification::centred);
@@ -51,6 +54,11 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     addAndMakeVisible (vibratoDepthKnob);
     addAndMakeVisible (vibratoMixKnob);
 
+    setUpSectionLabel (warmthSectionLabel, "WARMTH");
+    addAndMakeVisible (warmthToneKnob);
+    addAndMakeVisible (warmthDriveKnob);
+    addAndMakeVisible (warmthMixKnob);
+
     // Lit IN/OUT switches for each section — flipping one off both bypasses
     // that section's contribution to the sound and collapses its knob row
     // (in resized()) so a disabled section can't confuse the user into
@@ -58,19 +66,22 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     setUpToggle (shiftToggle);
     setUpToggle (slapToggle);
     setUpToggle (vibratoToggle);
+    setUpToggle (warmthToggle);
     shiftToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, ParamIDs::shiftOn, shiftToggle);
     slapToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, ParamIDs::slapOn, slapToggle);
     vibratoToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, ParamIDs::vibratoOn, vibratoToggle);
+    warmthToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        p.apvts, ParamIDs::warmthOn, warmthToggle);
 
     // A toggle can also change from host automation or preset recall, not
     // just a click here — poll and relayout so the collapse always matches.
     startTimerHz (15);
 
     setResizable (false, false);
-    setSize (480, 650);
+    setSize (480, 760);
 }
 
 JJBreezeAudioProcessorEditor::~JJBreezeAudioProcessorEditor()
@@ -98,12 +109,14 @@ void JJBreezeAudioProcessorEditor::timerCallback()
     const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
     const bool slapOn    = processorRef.apvts.getRawParameterValue (ParamIDs::slapOn)->load()    > 0.5f;
     const bool vibratoOn = processorRef.apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
+    const bool warmthOn  = processorRef.apvts.getRawParameterValue (ParamIDs::warmthOn)->load()  > 0.5f;
 
-    if (shiftOn != shiftWasOn || slapOn != slapWasOn || vibratoOn != vibratoWasOn)
+    if (shiftOn != shiftWasOn || slapOn != slapWasOn || vibratoOn != vibratoWasOn || warmthOn != warmthWasOn)
     {
         shiftWasOn = shiftOn;
         slapWasOn = slapOn;
         vibratoWasOn = vibratoOn;
+        warmthWasOn = warmthOn;
         resized();
         repaint();
     }
@@ -130,8 +143,8 @@ static constexpr int bottomPadding = 36; // extra clearance so the bottom corner
 static constexpr int sectionLabelHeight = 26;
 static constexpr int sectionGap = 14; // vertical gap between one section's card and the next
 static constexpr int toggleWidth = 34;
-static constexpr int numSectionLabels = 3;    // Shift, Slapback, Vibrato each get one
-static constexpr int numSectionGaps = 2;      // gaps: Shift-Slapback, Slapback-Vibrato
+static constexpr int numSectionLabels = 4;    // Shift, Slapback, Vibrato, Warmth each get one
+static constexpr int numSectionGaps = 3;      // gaps: Shift-Slapback, Slapback-Vibrato, Vibrato-Warmth
 
 void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
 {
@@ -184,6 +197,7 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
     drawSection (shiftSectionLabel, shiftPanelBounds);
     drawSection (slapSectionLabel, slapPanelBounds);
     drawSection (vibratoSectionLabel, vibratoPanelBounds);
+    drawSection (warmthSectionLabel, warmthPanelBounds);
 
     // Mounting screws at the four corners of the chassis.
     const float inset = 17.0f;
@@ -214,11 +228,13 @@ void JJBreezeAudioProcessorEditor::resized()
     const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
     const bool slapOn    = processorRef.apvts.getRawParameterValue (ParamIDs::slapOn)->load()    > 0.5f;
     const bool vibratoOn = processorRef.apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
+    const bool warmthOn  = processorRef.apvts.getRawParameterValue (ParamIDs::warmthOn)->load()  > 0.5f;
 
     const int shiftRows = shiftOn ? 2 : 0;
     const int slapRows = slapOn ? 1 : 0;
     const int vibratoRows = vibratoOn ? 1 : 0;
-    const int activeRows = juce::jmax (1, shiftRows + slapRows + vibratoRows);
+    const int warmthRows = warmthOn ? 1 : 0;
+    const int activeRows = juce::jmax (1, shiftRows + slapRows + vibratoRows + warmthRows);
 
     // Every section's label bar (with its toggle) always stays visible, so
     // the user can always switch it back on. Only the knob rows collapse —
@@ -295,8 +311,7 @@ void JJBreezeAudioProcessorEditor::resized()
 
     area.removeFromTop (sectionGap);
 
-    // VIBRATO — one row, takes whatever's left (absorbs any rounding
-    // remainder from the integer row-height division above).
+    // VIBRATO — one row.
     {
         auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
         auto labelRow = fullLabelRow;
@@ -310,7 +325,7 @@ void JJBreezeAudioProcessorEditor::resized()
 
         if (vibratoOn)
         {
-            auto vibratoRow = area;
+            auto vibratoRow = area.removeFromTop (rowHeight);
             vibratoPanelBounds = fullLabelRow.getUnion (vibratoRow).expanded (6, 4);
 
             const int knobWidth = vibratoRow.getWidth() / 3;
@@ -321,6 +336,37 @@ void JJBreezeAudioProcessorEditor::resized()
         else
         {
             vibratoPanelBounds = fullLabelRow.expanded (6, 4);
+        }
+    }
+
+    area.removeFromTop (sectionGap);
+
+    // WARMTH — one row, takes whatever's left (absorbs any rounding
+    // remainder from the integer row-height division above).
+    {
+        auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
+        auto labelRow = fullLabelRow;
+        warmthToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 5));
+        labelRow.removeFromRight (6);
+        warmthSectionLabel.setBounds (labelRow);
+
+        warmthToneKnob.setVisible (warmthOn);
+        warmthDriveKnob.setVisible (warmthOn);
+        warmthMixKnob.setVisible (warmthOn);
+
+        if (warmthOn)
+        {
+            auto warmthRow = area;
+            warmthPanelBounds = fullLabelRow.getUnion (warmthRow).expanded (6, 4);
+
+            const int knobWidth = warmthRow.getWidth() / 3;
+            warmthToneKnob.setBounds  (warmthRow.removeFromLeft (knobWidth).reduced (10));
+            warmthDriveKnob.setBounds (warmthRow.removeFromLeft (knobWidth).reduced (10));
+            warmthMixKnob.setBounds   (warmthRow.reduced (10));
+        }
+        else
+        {
+            warmthPanelBounds = fullLabelRow.expanded (6, 4);
         }
     }
 }

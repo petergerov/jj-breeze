@@ -262,18 +262,20 @@ private:
     juce::Label shiftSectionLabel;
     juce::Label slapSectionLabel;
     juce::Label vibratoSectionLabel;
+    juce::Label warmthSectionLabel;
 
-    LedToggleButton shiftToggle, slapToggle, vibratoToggle;
+    LedToggleButton shiftToggle, slapToggle, vibratoToggle, warmthToggle;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> shiftToggleAttachment,
-        slapToggleAttachment, vibratoToggleAttachment;
-    bool shiftWasOn = true, slapWasOn = false, vibratoWasOn = false;
+        slapToggleAttachment, vibratoToggleAttachment, warmthToggleAttachment;
+    bool shiftWasOn = true, slapWasOn = false, vibratoWasOn = false, warmthWasOn = false;
 
     // Panel backgrounds drawn behind each group of knobs.
-    juce::Rectangle<int> shiftPanelBounds, slapPanelBounds, vibratoPanelBounds;
+    juce::Rectangle<int> shiftPanelBounds, slapPanelBounds, vibratoPanelBounds, warmthPanelBounds;
 
     LabelledKnob pitchLKnob, pitchRKnob, delayLKnob, delayRKnob, focusKnob, mixKnob;
     LabelledKnob slapTimeKnob, slapFeedbackKnob, slapMixKnob;
     LabelledKnob vibratoRateKnob, vibratoDepthKnob, vibratoMixKnob;
+    LabelledKnob warmthToneKnob, warmthDriveKnob, warmthMixKnob;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (JJBreezeAudioProcessorEditor)
 };

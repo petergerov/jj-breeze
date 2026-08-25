@@ -11,10 +11,11 @@ host). It sits between two well-known reference points:
 jj-breeze implements the same core widening technique — it is *not* a
 clone of either product's code or presets — but deliberately exposes far
 fewer controls than both, aiming for "turn one or two knobs and it sounds
-right." It also adds a separate slapback echo section and a Vibrato section,
-plus "JJ Cale Vocal" and "Cajun Moon Vocal" factory presets that lean into
-intimate/narrow and warm/swirling rather than wide (see Factory presets
-below) — hence the name, a nod to JJ Cale's "Call Me the Breeze."
+right." It also adds a separate slapback echo section, a Vibrato section,
+and a Warmth tone stage, plus "JJ Cale Vocal" and "Cajun Moon Vocal" factory
+presets that lean into intimate/narrow and warm/dark rather than wide (see
+Factory presets below) — hence the name, a nod to JJ Cale's "Call Me the
+Breeze."
 
 ## How it works
 
@@ -51,12 +52,30 @@ Also separately, **a Vibrato section** (reuses `Source/DSP/ModulatedDelay.h`)
 — continuous LFO-driven pitch wobble via a swept short delay (the classic
 "delay-based vibrato" technique, the same mechanism a Uni-Vibe's vibrato mode
 uses), rather than the Width knobs' *static* micro-detune. This is what gets
-you a slow, warm, swirling character (in the direction of JJ Cale's "Cajun
-Moon") that a fixed detune can't produce. Also off by default (Vibrato
-Mix = 0%). Width and Vibrato are independent "lenses" on the same dry signal
-— each is crossfaded against that dry signal by its own Mix knob and the two
-are then summed, so turning one up doesn't eat into the other; with Vibrato
-Mix at 0 the output is identical to before this section existed.
+you a slow, warm, swirling character that a fixed detune can't produce. Also
+off by default (Vibrato Mix = 0%). Width and Vibrato are independent "lenses"
+on the same dry signal — each is crossfaded against that dry signal by its
+own Mix knob and the two are then summed, so turning one up doesn't eat into
+the other; with Vibrato Mix at 0 the output is identical to before this
+section existed.
+
+Finally, **a Warmth stage** (`Source/DSP/Warmth.h`) — a low-pass filter
+followed by gentle tanh soft-saturation, applied to the *fully-summed*
+output rather than being another independent lens on dry. Unlike Width/Slap/
+Vibrato, this isn't meant to be a special effect that stacks with the rest —
+it's a final tone-shaping pass for a darker, rounder, more "through an old
+tube amp" character. Off by default (Warmth Mix = 0%). Added after analyzing
+`example/cajunmoon_vocal.mp3` as a reference target: that recording's
+defining trait turned out to be a heavily rolled-off top end (only ~1% of
+its spectral energy above 2kHz), not width, echo, or a strong deliberate
+vibrato — something none of the other sections could produce, hence this
+stage.
+
+All four sections — Shift, Slapback, Vibrato, Warmth — have their own lit
+on/off switch in the UI. Turning one off both bypasses its contribution to
+the output (its DSP keeps running internally, so re-enabling it is
+click-free) and collapses its knobs out of the way, so a section that isn't
+doing anything doesn't stay on screen distracting you.
 
 ## Controls
 
@@ -78,6 +97,12 @@ delay values you want directly.
 | **Vibrato Rate** | 0.1–8 Hz | Speed of the pitch wobble. JJ Cale's "Cajun Moon" territory is slow, around 1–1.5 Hz. |
 | **Vibrato Depth** | 0–8 ms | How far the swept delay moves — bigger swing = more obvious pitch wobble. |
 | **Vibrato Mix** | 0–100% | Blend of the wobbled signal with dry. At 100% it's a true vibrato (fully replaces the static pitch); lower values give a wobbly chorus-like blend instead. 0% by default (off). |
+| **Warmth Tone** | 500 Hz–12 kHz | Low-pass cutoff applied to the final output. Lower = darker/warmer. Default 3.5 kHz. |
+| **Warmth Drive** | 0–100% | Soft (tanh) saturation amount, applied after the low-pass. 0% = filter only, no added harmonics. |
+| **Warmth Mix** | 0–100% | Blend of the warmed (filtered + saturated) signal with the rest of the chain's output. 0% by default (off). |
+
+Each of the four sections (Shift, Slapback, Vibrato, Warmth) also has its own
+on/off switch, independent of its Mix knob — see "How it works" above.
 
 ## Factory presets
 
@@ -91,10 +116,15 @@ field at the top of the plugin window) — no in-plugin preset UI needed:
   plus a single low-feedback slapback (Time 100 ms, Feedback 12%, Mix 20%)
   instead of the width being the main event. Aimed at an intimate,
   laid-back, close vocal rather than a wide/shimmery one.
-- **Cajun Moon Vocal** — width off entirely (0 ct, 0% Mix); the character
-  instead comes from a slow Vibrato (1.1 Hz, 3.5 ms depth, 55% mix) for that
-  warm swirling wobble, plus a light slapback (Time 100 ms, Feedback 10%,
-  Mix 15%) for presence.
+- **Cajun Moon Vocal** — retuned against an actual reference recording
+  (`example/cajunmoon_vocal.mp3`) rather than guessed. Analysing it
+  (spectrogram, autocorrelation-based pitch tracking, stereo correlation)
+  found no discrete slapback echo, no strong deliberate vibrato (the
+  measured pitch movement was just natural vocal phrasing), and one clear,
+  dominant trait: a heavily rolled-off, dark/warm tone. So the preset is now
+  width off, slapback off, a light touch of Vibrato (1.1 Hz, 3.5 ms depth,
+  15% mix — present but no longer the main event), and **Warmth on** (Tone
+  2.8 kHz, Drive 25%, Mix 70%) carrying the actual character.
 
 To add more presets, extend the `std::array<Preset, N>` returned by
 `getPresets()` in `PluginProcessor.cpp` (and bump `N`).
@@ -131,9 +161,10 @@ This builds three targets:
 CMakeLists.txt              JUCE plugin target (AU, VST3, Standalone)
 Source/
   PluginProcessor.h/.cpp    Parameters (APVTS) + the per-block audio path
-  PluginEditor.h/.cpp       Minimal GUI: widener knobs + separate Slapback and Vibrato sections
+  PluginEditor.h/.cpp       GUI: Shift knobs + separate Slapback, Vibrato and Warmth sections
   DSP/
     PitchShifter.h          Dual-tap crossfaded delay-line pitch shifter
     ModulatedDelay.h        Short delay + LFO wobble (used by both Width and Vibrato)
     SlapbackDelay.h          Mono feedback delay with damped repeats (echo)
+    Warmth.h                 Low-pass + soft saturation tone stage on the final output
 ```
