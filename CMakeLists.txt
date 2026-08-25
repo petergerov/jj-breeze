@@ -15,6 +15,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
+# Embeds vinyl.png (the JJ Cale portrait that the retro UI is styled after)
+# so the editor can draw it as a small "record label" badge in the header.
+juce_add_binary_data(jj_breeze_assets
+    SOURCES
+        vinyl.png
+)
+set_target_properties(jj_breeze_assets PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+
 juce_add_plugin(jj_breeze
     COMPANY_NAME "Gerov"
     BUNDLE_ID "com.gerov.jjbreeze"
@@ -48,6 +56,7 @@ target_link_libraries(jj_breeze
     PRIVATE
         juce::juce_audio_utils
         juce::juce_dsp
+        jj_breeze_assets
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
