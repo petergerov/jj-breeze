@@ -103,6 +103,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::crea
             .withLabel ("%")
             .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
 
+    // Per-section on/off, one per UI section — bypasses that section's
+    // contribution without touching its knob values, so re-enabling it
+    // brings back exactly what was dialed in.
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::shiftOn, 1 }, "Shift On", true));
+
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::slapOn, 1 }, "Slapback On", false));
+
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::vibratoOn, 1 }, "Vibrato On", false));
+
     return { params.begin(), params.end() };
 }
 
@@ -182,6 +194,12 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const float vibDepthMs  = apvts.getRawParameterValue (ParamIDs::vibratoDepth)->load();
     const float vibMixAmt   = apvts.getRawParameterValue (ParamIDs::vibratoMix)->load() * 0.01f;
 
+    // Section on/off — each section's DSP still runs below (for click-free
+    // re-enabling), only its contribution to the output is gated here.
+    const bool shiftIsOn   = apvts.getRawParameterValue (ParamIDs::shiftOn)->load() > 0.5f;
+    const bool slapIsOn    = apvts.getRawParameterValue (ParamIDs::slapOn)->load() > 0.5f;
+    const bool vibratoIsOn = apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
+
     leftVoice.pitchShifter.setShiftCents (pitchLCents);
     rightVoice.pitchShifter.setShiftCents (pitchRCents);
     leftVoice.delay.setBaseDelayMs (delayLMs);
@@ -247,8 +265,14 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         // summed (rather than sequentially crossfaded), so turning one up
         // doesn't eat into the other. With vibratoMix at 0 this reduces
         // exactly to the previous dry*(1-mix) + wet*mix formula.
-        left[n]  = dryL + mix * (wetL - dryL) + vibMixAmt * (vibL - dryL) + slapEcho;
-        right[n] = dryR + mix * (wetR - dryR) + vibMixAmt * (vibR - dryR) + slapEcho;
+        const float shiftMixL = shiftIsOn ? mix * (wetL - dryL) : 0.0f;
+        const float shiftMixR = shiftIsOn ? mix * (wetR - dryR) : 0.0f;
+        const float vibMixL   = vibratoIsOn ? vibMixAmt * (vibL - dryL) : 0.0f;
+        const float vibMixR   = vibratoIsOn ? vibMixAmt * (vibR - dryR) : 0.0f;
+        const float slapOut   = slapIsOn ? slapEcho : 0.0f;
+
+        left[n]  = dryL + shiftMixL + vibMixL + slapOut;
+        right[n] = dryR + shiftMixR + vibMixR + slapOut;
 
         blockPeak = juce::jmax (blockPeak, std::abs (left[n]), std::abs (right[n]));
     }
@@ -263,20 +287,20 @@ juce::AudioProcessorEditor* JJBreezeAudioProcessor::createEditor()
 
 const std::array<JJBreezeAudioProcessor::Preset, 3>& JJBreezeAudioProcessor::getPresets()
 {
-    // pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix, vibratoRate, vibratoDepth, vibratoMix
+    // pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix, vibratoRate, vibratoDepth, vibratoMix, shiftOn, slapOn, vibratoOn
     static const std::array<Preset, 3> presets { {
-        { "Default",       12.0f, -12.0f, 15.0f, 15.0f, 150.0f, 50.0f, 110.0f, 15.0f,  0.0f, 1.2f, 3.0f,  0.0f },
+        { "Default",       12.0f, -12.0f, 15.0f, 15.0f, 150.0f, 50.0f, 110.0f, 15.0f,  0.0f, 1.2f, 3.0f,  0.0f,  true,  false, false },
 
         // A laid-back, intimate vocal in the JJ Cale direction: the width
         // is turned way down (a few cents, low mix) rather than off, so
         // there's still some doubling glue, plus a single, low-feedback
         // slapback repeat instead of the wide microshift being the star.
-        { "JJ Cale Vocal",  4.0f,  -4.0f,  8.0f, 10.0f, 300.0f, 18.0f, 100.0f, 12.0f, 20.0f, 1.2f, 3.0f,  0.0f },
+        { "JJ Cale Vocal",  4.0f,  -4.0f,  8.0f, 10.0f, 300.0f, 18.0f, 100.0f, 12.0f, 20.0f, 1.2f, 3.0f,  0.0f,  true,  true,  false },
 
         // "Cajun Moon"-style swirl: the width detune is off entirely (0ct,
         // 0% mix) — the slow, warm vibrato wobble is the character here,
         // not a static micro-detune — plus a light slapback for presence.
-        { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 15.0f, 1.1f, 3.5f, 55.0f },
+        { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 15.0f, 1.1f, 3.5f, 55.0f, false, true,  true  },
     } };
     return presets;
 }
@@ -320,6 +344,10 @@ void JJBreezeAudioProcessor::applyPreset (int index)
     setParam (ParamIDs::vibratoRate,  preset.vibratoRate);
     setParam (ParamIDs::vibratoDepth, preset.vibratoDepth);
     setParam (ParamIDs::vibratoMix,   preset.vibratoMix);
+
+    setParam (ParamIDs::shiftOn,   preset.shiftOn   ? 1.0f : 0.0f);
+    setParam (ParamIDs::slapOn,    preset.slapOn    ? 1.0f : 0.0f);
+    setParam (ParamIDs::vibratoOn, preset.vibratoOn ? 1.0f : 0.0f);
 }
 
 void JJBreezeAudioProcessor::setCurrentProgram (int index)

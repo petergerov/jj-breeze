@@ -23,6 +23,13 @@ namespace ParamIDs
     static const juce::String vibratoRate  = "vibratoRate";  // Hz
     static const juce::String vibratoDepth = "vibratoDepth"; // ms
     static const juce::String vibratoMix   = "vibratoMix";   // 0..1
+
+    // Per-section on/off — bypasses that section's contribution to the
+    // output entirely (its DSP still runs, so re-enabling is click-free)
+    // and drives the UI's lit toggle + collapsed/expanded layout.
+    static const juce::String shiftOn    = "shiftOn";
+    static const juce::String slapOn     = "slapOn";
+    static const juce::String vibratoOn  = "vibratoOn";
 }
 
 class JJBreezeAudioProcessor : public juce::AudioProcessor
@@ -77,6 +84,7 @@ private:
         const char* name;
         float pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix,
               vibratoRate, vibratoDepth, vibratoMix;
+        bool shiftOn, slapOn, vibratoOn;
     };
 
     static const std::array<Preset, 3>& getPresets();

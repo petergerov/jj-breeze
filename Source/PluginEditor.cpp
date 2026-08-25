@@ -57,12 +57,31 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     addAndMakeVisible (vibratoDepthKnob);
     addAndMakeVisible (vibratoMixKnob);
 
+    // Lit IN/OUT switches for each section — flipping one off both bypasses
+    // that section's contribution to the sound and collapses its knob row
+    // (in resized()) so a disabled section can't confuse the user into
+    // thinking its knobs still matter.
+    setUpToggle (shiftToggle);
+    setUpToggle (slapToggle);
+    setUpToggle (vibratoToggle);
+    shiftToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        p.apvts, ParamIDs::shiftOn, shiftToggle);
+    slapToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        p.apvts, ParamIDs::slapOn, slapToggle);
+    vibratoToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        p.apvts, ParamIDs::vibratoOn, vibratoToggle);
+
+    // A toggle can also change from host automation or preset recall, not
+    // just a click here — poll and relayout so the collapse always matches.
+    startTimerHz (15);
+
     setResizable (false, false);
     setSize (480, 720);
 }
 
 JJBreezeAudioProcessorEditor::~JJBreezeAudioProcessorEditor()
 {
+    stopTimer();
     setLookAndFeel (nullptr);
 }
 
@@ -73,6 +92,27 @@ void JJBreezeAudioProcessorEditor::setUpSectionLabel (juce::Label& label, const 
     label.setColour (juce::Label::textColourId, accent);
     label.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (label);
+}
+
+void JJBreezeAudioProcessorEditor::setUpToggle (LedToggleButton& button)
+{
+    addAndMakeVisible (button);
+}
+
+void JJBreezeAudioProcessorEditor::timerCallback()
+{
+    const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
+    const bool slapOn    = processorRef.apvts.getRawParameterValue (ParamIDs::slapOn)->load()    > 0.5f;
+    const bool vibratoOn = processorRef.apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
+
+    if (shiftOn != shiftWasOn || slapOn != slapWasOn || vibratoOn != vibratoWasOn)
+    {
+        shiftWasOn = shiftOn;
+        slapWasOn = slapOn;
+        vibratoWasOn = vibratoOn;
+        resized();
+        repaint();
+    }
 }
 
 void JJBreezeAudioProcessorEditor::drawScrew (juce::Graphics& g, juce::Point<float> centre) const
@@ -94,7 +134,7 @@ static constexpr int meterStripHeight = 110;
 static constexpr int outerPadding = 20; // horizontal margin
 static constexpr int topBottomPadding = 12;
 static constexpr int sectionLabelHeight = 22;
-static constexpr int numRows = 4;             // pitch, delay, slapback, vibrato
+static constexpr int toggleWidth = 34;
 static constexpr int numSectionLabels = 3;    // Shift, Slapback, Vibrato each get one
 
 void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
@@ -174,7 +214,9 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawEllipse (porthole, 1.2f);
     }
 
-    // Section panels — recessed metal cards that visually group each knob row.
+    // Section panels — recessed metal cards that visually group each knob
+    // row (or, when the section's toggle is off, just its collapsed
+    // header bar).
     auto drawSection = [&] (const juce::Label& label, const juce::Rectangle<int>& panelBounds)
     {
         auto pf = panelBounds.toFloat();
@@ -224,38 +266,112 @@ void JJBreezeAudioProcessorEditor::resized()
 
     area.reduce (outerPadding, topBottomPadding);
 
-    // A uniform grid — pitch/delay/slapback/vibrato rows, all the same
-    // height, so every knob ends up the same size.
-    const int rowHeight = (area.getHeight() - numSectionLabels * sectionLabelHeight) / numRows;
+    const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
+    const bool slapOn    = processorRef.apvts.getRawParameterValue (ParamIDs::slapOn)->load()    > 0.5f;
+    const bool vibratoOn = processorRef.apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
 
-    shiftSectionLabel.setBounds (area.removeFromTop (sectionLabelHeight));
-    auto pitchRow = area.removeFromTop (rowHeight);
-    auto delayRow = area.removeFromTop (rowHeight);
-    shiftPanelBounds = pitchRow.getUnion (delayRow).expanded (6, 4);
+    const int shiftRows = shiftOn ? 2 : 0;
+    const int slapRows = slapOn ? 1 : 0;
+    const int vibratoRows = vibratoOn ? 1 : 0;
+    const int activeRows = juce::jmax (1, shiftRows + slapRows + vibratoRows);
 
-    slapSectionLabel.setBounds (area.removeFromTop (sectionLabelHeight));
-    auto slapRow = area.removeFromTop (rowHeight);
-    slapPanelBounds = slapRow.expanded (6, 4);
+    // Every section's label bar (with its toggle) always stays visible, so
+    // the user can always switch it back on. Only the knob rows collapse —
+    // and whatever height that frees up goes to sections still expanded, so
+    // e.g. Shift alone gets noticeably bigger knobs when Slap and Vibrato
+    // are both off, rather than leaving dead space.
+    const int rowHeight = (area.getHeight() - numSectionLabels * sectionLabelHeight) / activeRows;
 
-    vibratoSectionLabel.setBounds (area.removeFromTop (sectionLabelHeight));
-    auto vibratoRow = area;
-    vibratoPanelBounds = vibratoRow.expanded (6, 4);
+    // SHIFT — pitch + delay rows (2 rows worth of height when on).
+    {
+        auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
+        auto labelRow = fullLabelRow;
+        shiftToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 3));
+        labelRow.removeFromRight (6);
+        shiftSectionLabel.setBounds (labelRow);
 
-    const int knobWidth = pitchRow.getWidth() / 3;
+        pitchLKnob.setVisible (shiftOn);
+        pitchRKnob.setVisible (shiftOn);
+        focusKnob.setVisible (shiftOn);
+        delayLKnob.setVisible (shiftOn);
+        delayRKnob.setVisible (shiftOn);
+        mixKnob.setVisible (shiftOn);
 
-    pitchLKnob.setBounds (pitchRow.removeFromLeft (knobWidth).reduced (10));
-    pitchRKnob.setBounds (pitchRow.removeFromLeft (knobWidth).reduced (10));
-    focusKnob.setBounds  (pitchRow.reduced (10));
+        if (shiftOn)
+        {
+            auto pitchRow = area.removeFromTop (rowHeight);
+            auto delayRow = area.removeFromTop (rowHeight);
+            shiftPanelBounds = fullLabelRow.getUnion (pitchRow).getUnion (delayRow).expanded (6, 4);
 
-    delayLKnob.setBounds (delayRow.removeFromLeft (knobWidth).reduced (10));
-    delayRKnob.setBounds (delayRow.removeFromLeft (knobWidth).reduced (10));
-    mixKnob.setBounds    (delayRow.reduced (10));
+            const int knobWidth = pitchRow.getWidth() / 3;
+            pitchLKnob.setBounds (pitchRow.removeFromLeft (knobWidth).reduced (10));
+            pitchRKnob.setBounds (pitchRow.removeFromLeft (knobWidth).reduced (10));
+            focusKnob.setBounds  (pitchRow.reduced (10));
 
-    slapTimeKnob.setBounds     (slapRow.removeFromLeft (knobWidth).reduced (10));
-    slapFeedbackKnob.setBounds (slapRow.removeFromLeft (knobWidth).reduced (10));
-    slapMixKnob.setBounds      (slapRow.reduced (10));
+            delayLKnob.setBounds (delayRow.removeFromLeft (knobWidth).reduced (10));
+            delayRKnob.setBounds (delayRow.removeFromLeft (knobWidth).reduced (10));
+            mixKnob.setBounds    (delayRow.reduced (10));
+        }
+        else
+        {
+            shiftPanelBounds = fullLabelRow.expanded (6, 4);
+        }
+    }
 
-    vibratoRateKnob.setBounds  (vibratoRow.removeFromLeft (knobWidth).reduced (10));
-    vibratoDepthKnob.setBounds (vibratoRow.removeFromLeft (knobWidth).reduced (10));
-    vibratoMixKnob.setBounds   (vibratoRow.reduced (10));
+    // SLAPBACK — one row.
+    {
+        auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
+        auto labelRow = fullLabelRow;
+        slapToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 3));
+        labelRow.removeFromRight (6);
+        slapSectionLabel.setBounds (labelRow);
+
+        slapTimeKnob.setVisible (slapOn);
+        slapFeedbackKnob.setVisible (slapOn);
+        slapMixKnob.setVisible (slapOn);
+
+        if (slapOn)
+        {
+            auto slapRow = area.removeFromTop (rowHeight);
+            slapPanelBounds = fullLabelRow.getUnion (slapRow).expanded (6, 4);
+
+            const int knobWidth = slapRow.getWidth() / 3;
+            slapTimeKnob.setBounds     (slapRow.removeFromLeft (knobWidth).reduced (10));
+            slapFeedbackKnob.setBounds (slapRow.removeFromLeft (knobWidth).reduced (10));
+            slapMixKnob.setBounds      (slapRow.reduced (10));
+        }
+        else
+        {
+            slapPanelBounds = fullLabelRow.expanded (6, 4);
+        }
+    }
+
+    // VIBRATO — one row, takes whatever's left (absorbs any rounding
+    // remainder from the integer row-height division above).
+    {
+        auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
+        auto labelRow = fullLabelRow;
+        vibratoToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 3));
+        labelRow.removeFromRight (6);
+        vibratoSectionLabel.setBounds (labelRow);
+
+        vibratoRateKnob.setVisible (vibratoOn);
+        vibratoDepthKnob.setVisible (vibratoOn);
+        vibratoMixKnob.setVisible (vibratoOn);
+
+        if (vibratoOn)
+        {
+            auto vibratoRow = area;
+            vibratoPanelBounds = fullLabelRow.getUnion (vibratoRow).expanded (6, 4);
+
+            const int knobWidth = vibratoRow.getWidth() / 3;
+            vibratoRateKnob.setBounds  (vibratoRow.removeFromLeft (knobWidth).reduced (10));
+            vibratoDepthKnob.setBounds (vibratoRow.removeFromLeft (knobWidth).reduced (10));
+            vibratoMixKnob.setBounds   (vibratoRow.reduced (10));
+        }
+        else
+        {
+            vibratoPanelBounds = fullLabelRow.expanded (6, 4);
+        }
+    }
 }
