@@ -1,0 +1,45 @@
+name: Build Windows
+
+# JUCE's CMake API automatically drops plugin formats that aren't supported
+# on the current platform, so this builds whatever's left of the FORMATS
+# list in CMakeLists.txt on Windows: VST3 and Standalone (AU is Apple-only
+# and never applies here).
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JUCE itself is fetched by CMake (FetchContent, see CMakeLists.txt);
+      # caching that checkout is the single biggest speedup available here,
+      # since it's a full framework clone every time otherwise.
+      - name: Cache JUCE checkout
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/juce-src
+          key: juce-src-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DJJ_BREEZE_COPY_PLUGIN_AFTER_BUILD=OFF
+
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: jj-breeze-vst3-windows
+          path: build/jj_breeze_artefacts/Release/VST3/jj-breeze.vst3
+          if-no-files-found: error
+
+      - name: Upload Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: jj-breeze-standalone-windows
+          path: build/jj_breeze_artefacts/Release/Standalone/jj-breeze.exe
+          if-no-files-found: error

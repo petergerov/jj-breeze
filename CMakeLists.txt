@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS deployment version")
 
+# Off in CI (see .github/workflows/build-windows.yml): the post-build copy
+# targets system plugin folders (e.g. C:\Program Files\Common Files\VST3 on
+# Windows) that need elevation a CI runner doesn't have, which would fail
+# the whole build. On for normal local dev (scripts/install-local.sh also
+# does this copy explicitly itself, redundantly but harmlessly).
+option(JJ_BREEZE_COPY_PLUGIN_AFTER_BUILD "Copy the built plugin into the system plugin folders after building" ON)
+
 include(FetchContent)
 FetchContent_Declare(
     JUCE
@@ -27,7 +34,7 @@ juce_add_plugin(jj_breeze
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD TRUE
+    COPY_PLUGIN_AFTER_BUILD ${JJ_BREEZE_COPY_PLUGIN_AFTER_BUILD}
     VST3_CATEGORIES "Fx" "Modulation"
     AU_EXPORT_PREFIX JJBreezeAU
 )

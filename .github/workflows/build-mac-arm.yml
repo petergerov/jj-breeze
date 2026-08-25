@@ -1,0 +1,57 @@
+name: Build macOS (Apple Silicon)
+
+# Builds all three formats from CMakeLists.txt's FORMATS list (AU, VST3,
+# Standalone) natively on an arm64 runner — pinned to macos-14 rather than
+# macos-latest so this stays an Apple Silicon build even if GitHub's
+# "latest" alias moves to a newer default later.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JUCE itself is fetched by CMake (FetchContent, see CMakeLists.txt);
+      # caching that checkout is the single biggest speedup available here,
+      # since it's a full framework clone every time otherwise.
+      - name: Cache JUCE checkout
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/juce-src
+          key: juce-src-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -B build -G Xcode -DCMAKE_BUILD_TYPE=Release -DJJ_BREEZE_COPY_PLUGIN_AFTER_BUILD=OFF
+
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+
+      # Same auval check scripts/install-local.sh runs locally after every
+      # build — catches AU regressions here instead of only on a dev machine.
+      - name: Validate AU with auval
+        run: auval -v aufx Jjbz Grov
+
+      - name: Upload AU
+        uses: actions/upload-artifact@v4
+        with:
+          name: jj-breeze-au-macos-arm64
+          path: build/jj_breeze_artefacts/Release/AU/jj-breeze.component
+          if-no-files-found: error
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: jj-breeze-vst3-macos-arm64
+          path: build/jj_breeze_artefacts/Release/VST3/jj-breeze.vst3
+          if-no-files-found: error
+
+      - name: Upload Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: jj-breeze-standalone-macos-arm64
+          path: build/jj_breeze_artefacts/Release/Standalone/jj-breeze.app
+          if-no-files-found: error
