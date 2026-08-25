@@ -259,21 +259,19 @@ private:
 
     juce::Label titleLabel;
     juce::Label subtitleLabel;
-    juce::Label dropSectionLabel;
     juce::Label shiftSectionLabel;
     juce::Label slapSectionLabel;
     juce::Label vibratoSectionLabel;
     juce::Label warmthSectionLabel;
 
-    LedToggleButton dropToggle, shiftToggle, slapToggle, vibratoToggle, warmthToggle;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> dropToggleAttachment,
-        shiftToggleAttachment, slapToggleAttachment, vibratoToggleAttachment, warmthToggleAttachment;
-    bool dropWasOn = false, shiftWasOn = true, slapWasOn = false, vibratoWasOn = false, warmthWasOn = false;
+    LedToggleButton shiftToggle, slapToggle, vibratoToggle, warmthToggle;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> shiftToggleAttachment,
+        slapToggleAttachment, vibratoToggleAttachment, warmthToggleAttachment;
+    bool shiftWasOn = true, slapWasOn = false, vibratoWasOn = false, warmthWasOn = false;
 
     // Panel backgrounds drawn behind each group of knobs.
-    juce::Rectangle<int> dropPanelBounds, shiftPanelBounds, slapPanelBounds, vibratoPanelBounds, warmthPanelBounds;
+    juce::Rectangle<int> shiftPanelBounds, slapPanelBounds, vibratoPanelBounds, warmthPanelBounds;
 
-    LabelledKnob dropAmountLKnob, dropAmountRKnob, dropMixKnob;
     LabelledKnob pitchLKnob, pitchRKnob, delayLKnob, delayRKnob, focusKnob, mixKnob;
     LabelledKnob slapTimeKnob, slapFeedbackKnob, slapMixKnob;
     LabelledKnob vibratoRateKnob, vibratoDepthKnob, vibratoMixKnob;

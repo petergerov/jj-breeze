@@ -5,9 +5,6 @@ using namespace GearPalette;
 JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processorRef (p),
-      dropAmountLKnob (p.apvts, ParamIDs::dropAmountL, "AMOUNT L"),
-      dropAmountRKnob (p.apvts, ParamIDs::dropAmountR, "AMOUNT R"),
-      dropMixKnob     (p.apvts, ParamIDs::dropMix,     "MIX"),
       pitchLKnob (p.apvts, ParamIDs::pitchL, "PITCH L"),
       pitchRKnob (p.apvts, ParamIDs::pitchR, "PITCH R"),
       delayLKnob (p.apvts, ParamIDs::delayL, "DELAY L"),
@@ -34,16 +31,11 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     titleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (titleLabel);
 
-    subtitleLabel.setText ("PITCH DROP \xc2\xb7 STEREO WIDENER \xc2\xb7 SLAPBACK ECHO \xc2\xb7 VIBRATO \xc2\xb7 WARMTH", juce::dontSendNotification);
+    subtitleLabel.setText ("STEREO WIDENER \xc2\xb7 SLAPBACK ECHO \xc2\xb7 VIBRATO \xc2\xb7 WARMTH", juce::dontSendNotification);
     subtitleLabel.setFont (juce::Font (juce::FontOptions ("Menlo", 10.5f, juce::Font::plain)).withExtraKerningFactor (0.04f));
     subtitleLabel.setColour (juce::Label::textColourId, textMuted);
     subtitleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (subtitleLabel);
-
-    setUpSectionLabel (dropSectionLabel, "DROP");
-    addAndMakeVisible (dropAmountLKnob);
-    addAndMakeVisible (dropAmountRKnob);
-    addAndMakeVisible (dropMixKnob);
 
     addAndMakeVisible (pitchLKnob);
     addAndMakeVisible (pitchRKnob);
@@ -73,13 +65,10 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     // that section's contribution to the sound and collapses its knob row
     // (in resized()) so a disabled section can't confuse the user into
     // thinking its knobs still matter.
-    setUpToggle (dropToggle);
     setUpToggle (shiftToggle);
     setUpToggle (slapToggle);
     setUpToggle (vibratoToggle);
     setUpToggle (warmthToggle);
-    dropToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        p.apvts, ParamIDs::dropOn, dropToggle);
     shiftToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, ParamIDs::shiftOn, shiftToggle);
     slapToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
@@ -94,7 +83,7 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     startTimerHz (15);
 
     setResizable (false, false);
-    setSize (480, 850);
+    setSize (480, 760);
 }
 
 JJBreezeAudioProcessorEditor::~JJBreezeAudioProcessorEditor()
@@ -119,16 +108,13 @@ void JJBreezeAudioProcessorEditor::setUpToggle (LedToggleButton& button)
 
 void JJBreezeAudioProcessorEditor::timerCallback()
 {
-    const bool dropOn    = processorRef.apvts.getRawParameterValue (ParamIDs::dropOn)->load()    > 0.5f;
     const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
     const bool slapOn    = processorRef.apvts.getRawParameterValue (ParamIDs::slapOn)->load()    > 0.5f;
     const bool vibratoOn = processorRef.apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
     const bool warmthOn  = processorRef.apvts.getRawParameterValue (ParamIDs::warmthOn)->load()  > 0.5f;
 
-    if (dropOn != dropWasOn || shiftOn != shiftWasOn || slapOn != slapWasOn
-        || vibratoOn != vibratoWasOn || warmthOn != warmthWasOn)
+    if (shiftOn != shiftWasOn || slapOn != slapWasOn || vibratoOn != vibratoWasOn || warmthOn != warmthWasOn)
     {
-        dropWasOn = dropOn;
         shiftWasOn = shiftOn;
         slapWasOn = slapOn;
         vibratoWasOn = vibratoOn;
@@ -159,8 +145,8 @@ static constexpr int bottomPadding = 36; // extra clearance so the bottom corner
 static constexpr int sectionLabelHeight = 26;
 static constexpr int sectionGap = 14; // vertical gap between one section's card and the next
 static constexpr int toggleWidth = 34;
-static constexpr int numSectionLabels = 5;    // Drop, Shift, Slapback, Vibrato, Warmth each get one
-static constexpr int numSectionGaps = 4;      // gaps: Drop-Shift, Shift-Slapback, Slapback-Vibrato, Vibrato-Warmth
+static constexpr int numSectionLabels = 4;    // Shift, Slapback, Vibrato, Warmth each get one
+static constexpr int numSectionGaps = 3;      // gaps: Shift-Slapback, Slapback-Vibrato, Vibrato-Warmth
 
 void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
 {
@@ -210,7 +196,6 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawHorizontalLine (label.getBottom() - 1, (float) label.getX(), (float) panelBounds.getRight());
     };
 
-    drawSection (dropSectionLabel, dropPanelBounds);
     drawSection (shiftSectionLabel, shiftPanelBounds);
     drawSection (slapSectionLabel, slapPanelBounds);
     drawSection (vibratoSectionLabel, vibratoPanelBounds);
@@ -242,18 +227,16 @@ void JJBreezeAudioProcessorEditor::resized()
     area.removeFromTop (topPadding);
     area.removeFromBottom (bottomPadding);
 
-    const bool dropOn    = processorRef.apvts.getRawParameterValue (ParamIDs::dropOn)->load()    > 0.5f;
     const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
     const bool slapOn    = processorRef.apvts.getRawParameterValue (ParamIDs::slapOn)->load()    > 0.5f;
     const bool vibratoOn = processorRef.apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
     const bool warmthOn  = processorRef.apvts.getRawParameterValue (ParamIDs::warmthOn)->load()  > 0.5f;
 
-    const int dropRows = dropOn ? 1 : 0;
     const int shiftRows = shiftOn ? 2 : 0;
     const int slapRows = slapOn ? 1 : 0;
     const int vibratoRows = vibratoOn ? 1 : 0;
     const int warmthRows = warmthOn ? 1 : 0;
-    const int activeRows = juce::jmax (1, dropRows + shiftRows + slapRows + vibratoRows + warmthRows);
+    const int activeRows = juce::jmax (1, shiftRows + slapRows + vibratoRows + warmthRows);
 
     // Every section's label bar (with its toggle) always stays visible, so
     // the user can always switch it back on. Only the knob rows collapse —
@@ -261,39 +244,6 @@ void JJBreezeAudioProcessorEditor::resized()
     // e.g. Shift alone gets noticeably bigger knobs when Slap and Vibrato
     // are both off, rather than leaving dead space.
     const int rowHeight = (area.getHeight() - numSectionLabels * sectionLabelHeight - numSectionGaps * sectionGap) / activeRows;
-
-    // DROP — one row, three knobs (Amount L, Amount R, Mix) — independent
-    // per channel, like Shift's Pitch L/R. Runs first in both the UI and
-    // the signal chain: a static pitch shift on the voice itself, ahead of
-    // Shift's micro/macro-detune shifter.
-    {
-        auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
-        auto labelRow = fullLabelRow;
-        dropToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 5));
-        labelRow.removeFromRight (6);
-        dropSectionLabel.setBounds (labelRow);
-
-        dropAmountLKnob.setVisible (dropOn);
-        dropAmountRKnob.setVisible (dropOn);
-        dropMixKnob.setVisible (dropOn);
-
-        if (dropOn)
-        {
-            auto dropRow = area.removeFromTop (rowHeight);
-            dropPanelBounds = fullLabelRow.getUnion (dropRow).expanded (6, 4);
-
-            const int knobWidth = dropRow.getWidth() / 3;
-            dropAmountLKnob.setBounds (dropRow.removeFromLeft (knobWidth).reduced (10));
-            dropAmountRKnob.setBounds (dropRow.removeFromLeft (knobWidth).reduced (10));
-            dropMixKnob.setBounds     (dropRow.reduced (10));
-        }
-        else
-        {
-            dropPanelBounds = fullLabelRow.expanded (6, 4);
-        }
-    }
-
-    area.removeFromTop (sectionGap);
 
     // SHIFT — pitch + delay rows (2 rows worth of height when on).
     {

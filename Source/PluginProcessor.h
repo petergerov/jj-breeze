@@ -6,7 +6,6 @@
 #include <juce_dsp/juce_dsp.h>
 
 #include "DSP/PitchShifter.h"
-#include "DSP/PitchDrop.h"
 #include "DSP/ModulatedDelay.h"
 #include "DSP/SlapbackDelay.h"
 #include "DSP/Warmth.h"
@@ -26,15 +25,6 @@ namespace ParamIDs
     static const juce::String vibratoDepth = "vibratoDepth"; // ms
     static const juce::String vibratoMix   = "vibratoMix";   // 0..1
 
-    // Drop: a static, semitone-scale pitch shift applied to the voice
-    // itself (before any other section), for a deeper/darker character —
-    // distinct from the Shift section's ±1200-cent micro/macro shifter.
-    // Independent per channel, like Pitch L/R. Off by default (Drop Mix =
-    // 0%), like Slapback/Vibrato/Warmth.
-    static const juce::String dropAmountL  = "dropAmountL";  // semitones, bipolar
-    static const juce::String dropAmountR  = "dropAmountR";  // semitones, bipolar
-    static const juce::String dropMix      = "dropMix";      // 0..1
-
     // Warmth: a final tone stage (low-shelf body boost + low-pass + soft
     // saturation) applied to the fully-summed output, for a darker/rounder
     // character no other section provides.
@@ -49,7 +39,6 @@ namespace ParamIDs
     static const juce::String shiftOn    = "shiftOn";
     static const juce::String slapOn     = "slapOn";
     static const juce::String vibratoOn  = "vibratoOn";
-    static const juce::String dropOn     = "dropOn";
     static const juce::String warmthOn   = "warmthOn";
 }
 
@@ -92,16 +81,15 @@ private:
 
     // Factory presets: a name plus a value for every ParamIDs entry, in the
     // same order createParameterLayout() adds them. Index 0 ("Default") is
-    // the plugin's normal default sound (wide microshift, no slapback);
-    // later entries are alternate starting points selectable from the
-    // host's built-in preset menu.
+    // the plugin's normal default sound; later entries are alternate
+    // starting points selectable from the host's built-in preset menu.
     struct Preset
     {
         const char* name;
         float pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix,
-              vibratoRate, vibratoDepth, vibratoMix, dropAmountL, dropAmountR, dropMix,
+              vibratoRate, vibratoDepth, vibratoMix,
               warmthTone, warmthDrive, warmthBody, warmthMix;
-        bool shiftOn, slapOn, vibratoOn, dropOn, warmthOn;
+        bool shiftOn, slapOn, vibratoOn, warmthOn;
     };
 
     static const std::array<Preset, 8>& getPresets();
@@ -124,8 +112,8 @@ private:
         {
             // Longer than PitchShifter.h's original 35ms default: Pitch L/R
             // now goes up to +-1200 cents (see createParameterLayout()), and
-            // a longer grain keeps the tap-crossfade rate down at that shift
-            // size the same way PitchDrop.h's 70ms grain does for Drop.
+            // a longer grain keeps the tap-crossfade rate down at that
+            // shift size.
             pitchShifter.prepare (sampleRate, 70.0f);
             delay.prepare (sampleRate);
             lowBandFilter.reset();
@@ -143,13 +131,6 @@ private:
 
     ChannelVoice leftVoice, rightVoice;
     SlapbackDelay slapback; // mono, centered — separate from the L/R width voices above
-
-    // Drop: a static, semitone-scale pitch shift on the voice itself,
-    // applied before every other section (Shift/Slapback/Vibrato/Warmth all
-    // then act on its output the same as they would on the plain dry
-    // signal) — see ParamIDs::dropAmountL/dropAmountR/dropMix above and
-    // PitchDrop.h.
-    PitchDropShifter dropL, dropR;
 
     // Vibrato: continuous LFO-driven pitch modulation via a swept short
     // delay (the classic "delay-based vibrato" technique — reuses

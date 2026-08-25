@@ -11,42 +11,30 @@ host). It sits between two well-known reference points:
 jj-breeze implements the same core widening technique — it is *not* a
 clone of either product's code or presets — but deliberately exposes far
 fewer controls than both, aiming for "turn one or two knobs and it sounds
-right." It also adds a separate slapback echo section, a Vibrato section, a
-Warmth tone stage, and a Drop section (a static, semitone-scale pitch shift
-on the voice itself), plus "JJ Cale Vocal", "Cajun Moon Vocal" and "JJ Dark
-Vocal" factory presets that lean into intimate/narrow, warm/dark, and deep/
-dark rather than wide (see Factory presets below) — hence the name, a nod
-to JJ Cale's "Call Me the Breeze."
+right." It also adds a separate slapback echo section, a Vibrato section,
+and a Warmth tone stage, plus "JJ Cale Vocal", "Cajun Moon Vocal" and a
+family of "JJ Dark Vocal" factory presets that lean into intimate/narrow,
+warm/dark, and deep/dark rather than wide (see Factory presets below) —
+hence the name, a nod to JJ Cale's "Call Me the Breeze."
 
 ## How it works
 
-Before any of that, **Drop** (`Source/DSP/PitchDrop.h`) can apply a static,
-semitone-scale pitch shift to the voice itself — independently per channel,
-like Shift's Pitch L/R — blended against dry by one shared Mix knob;
-everything below (Shift, Slapback, Vibrato, Warmth) then treats that blend
-as its input, the same way it previously treated the raw dry signal. It's
-the same dual-tap crossfaded delay-line technique as the Shift section's
-pitch shifter (both now use a 70ms grain and cover the same
-±12-semitone/±1200-cent range), and it's a genuinely separate mechanism —
-not a UI convenience wrapper around Shift — mainly in that it's always
-full-band (not gated by Focus's crossover the way Shift's wet path is; see
-point 3 below) and shares one Mix rather than being wired through Shift's
-Mix/Focus. Off by default (Drop Mix = 0%).
-
-Each channel then runs through:
+Each channel runs through:
 
 1. **A dual-tap crossfaded delay-line pitch shifter** (`Source/DSP/PitchShifter.h`)
    — the classic "microshift" technique: two read pointers trail the write
    pointer by a delay that ramps up or down depending on the desired pitch
    ratio, crossfaded with 50%-overlapping Hann windows so each tap's reset is
-   inaudible. Left and right each have their own independent shift amount —
-   and, since Pitch L/R was widened to ±1200 cents alongside Drop, this is
-   also usable on its own for a big semitone-scale drop, with the advantage
-   of independent per-channel Pitch *and* Delay (see Controls below). One
-   difference from Drop worth knowing: the wet path here only covers
-   whatever's above Focus (20Hz–10kHz, default 150Hz) — the band below always
-   stays dry/unshifted (see point 3) — so getting a full-band drop this way
-   means turning Focus most of the way down, not just Mix up.
+   inaudible. Left and right each have their own independent shift amount.
+   Pitch L/R covers ±1200 cents (a full octave), skewed so the fine
+   micro-detune territory near 0 still gets most of the knob's travel — so
+   the same mechanism covers both the classic microshift widening *and*, at
+   larger values (with Focus turned down — see point 3), a big, semitone-
+   scale dark/deep or bright/processed voice effect. One nuance worth
+   knowing either way: the wet path here only covers whatever's above Focus
+   — the band below always stays dry/unshifted — so getting a full-band
+   shift out of this section means turning Focus most of the way down, not
+   just Mix up.
 2. **A short modulated delay** (`Source/DSP/ModulatedDelay.h`) with a slow,
    fixed-depth LFO wobble on top of the user's Delay L/R knobs, for the
    "time-varying delay" movement both reference plugins have.
@@ -96,11 +84,17 @@ under Factory presets below) that isolated *pitch* and *low-mid fullness*,
 not top-end rolloff, as what actually separates a "dark" take from a
 "normal" one.
 
-All five sections — Drop, Shift, Slapback, Vibrato, Warmth — have their own
-lit on/off switch in the UI. Turning one off both bypasses its contribution
-to the output (its DSP keeps running internally, so re-enabling it is
+All four sections — Shift, Slapback, Vibrato, Warmth — have their own lit
+on/off switch in the UI. Turning one off both bypasses its contribution to
+the output (its DSP keeps running internally, so re-enabling it is
 click-free) and collapses its knobs out of the way, so a section that isn't
 doing anything doesn't stay on screen distracting you.
+
+(An earlier version of this plugin had a fifth section, "Drop" — a separate,
+single-amount pitch shifter applied ahead of everything else. It was removed
+once Pitch L/R's range was widened to ±1200 cents, since at that point Shift
+covered the same ground and more, with independent per-channel Pitch *and*
+Delay rather than one shared amount.)
 
 ## Controls
 
@@ -110,14 +104,11 @@ delay values you want directly.
 
 | Control | Range | What it does |
 |---|---|---|
-| **Drop Amount L** | −12 to +12 semitones | Static pitch shift applied to the left channel, ahead of every other section. Default −3 (down). Negative/deeper is the "dark voice" direction; unlike Pitch L/R at their default range this isn't a subtle detune — a few semitones is clearly audible. |
-| **Drop Amount R** | −12 to +12 semitones | Same, for the right channel. Default −3 — matching Amount L keeps the drop mono-compatible; set them apart for an octave-detune-style width effect instead. |
-| **Drop Mix** | 0–100% | Blend of the pitch-dropped voice (both channels) with the plain dry signal. 0% by default (off). |
-| **Pitch L** | −1200 to +1200 cents | Pitch shift applied to the left channel. Default +12 (up). Skewed so fine micro-detune territory near 0 still gets most of the knob's travel, but the full ±1 octave is reachable — so besides the classic microshift widening, Shift's independent per-channel Pitch *and* Delay controls are also a way to dial in a big, semitone-scale dark/deep drop directly (matching Pitch L and R and using Mix/Focus like a "wet" pitch-drop), as an alternative to the single-amount, both-channels-together Drop section above. |
-| **Pitch R** | −1200 to +1200 cents | Pitch shift applied to the right channel. Default −12 (down) — opposite Pitch L gives the classic wide microshift; matching signs instead gives a more mono-compatible width (or, at large values, a mono-compatible pitch drop) via delay offset alone. |
+| **Pitch L** | −1200 to +1200 cents | Pitch shift applied to the left channel. Default +300 (up) — see Factory presets/Default below for why. Skewed so fine micro-detune territory near 0 still gets most of the knob's travel, but the full ±1 octave is reachable. |
+| **Pitch R** | −1200 to +1200 cents | Pitch shift applied to the right channel. Default +300 (up), matching Pitch L — opposite signs instead gives the classic wide microshift; matching signs (as the default does) gives a mono-compatible pitch shift via delay offset alone, which is also how the dark/deep and bright/processed presets below work. |
 | **Delay L** | 0–40 ms | Base delay time on the left channel, with subtle built-in modulation. |
 | **Delay R** | 0–40 ms | Base delay time on the right channel. |
-| **Focus** | 20 Hz–10 kHz | Crossover point (both channels): everything below stays fully dry/untouched; only the band above gets pitch-shifted + delayed. Raise it to keep the width effect off the low end entirely. |
+| **Focus** | 20 Hz–10 kHz | Crossover point (both channels): everything below stays fully dry/untouched; only the band above gets pitch-shifted + delayed. Raise it to keep the width effect off the low end entirely; lower it (toward 20 Hz) to get a full-band pitch shift out of large Pitch L/R values instead of just the highs. |
 | **Mix** | 0–100% | Dry/wet blend (both channels). |
 | **Slap Time** | 30–300 ms | Delay time of the slapback echo. Classic slapback territory is roughly 80–140 ms. |
 | **Slap Feedback** | 0–70% | How much the (damped) repeat feeds back for further repeats. 0% = a single slap; higher = a decaying series of repeats. |
@@ -127,11 +118,11 @@ delay values you want directly.
 | **Vibrato Mix** | 0–100% | Blend of the wobbled signal with dry. At 100% it's a true vibrato (fully replaces the static pitch); lower values give a wobbly chorus-like blend instead. 0% by default (off). |
 | **Warmth Tone** | 500 Hz–12 kHz | Low-pass cutoff applied to the final output. Lower = darker/warmer. Default 3.5 kHz. |
 | **Warmth Drive** | 0–100% | Soft (tanh) saturation amount, applied after the low-pass. 0% = filter only, no added harmonics. |
-| **Warmth Body** | 0–100% | Low-shelf boost at a fixed 150Hz corner, up to +6dB, applied before the low-pass. 0% = no boost. Restores the chest fullness a pitch-down (Drop) doesn't add on its own. |
+| **Warmth Body** | 0–100% | Low-shelf boost at a fixed 150Hz corner, up to +6dB, applied before the low-pass. 0% = no boost. Restores the chest fullness a big pitch-down doesn't add on its own. |
 | **Warmth Mix** | 0–100% | Blend of the warmed (shelved + filtered + saturated) signal with the rest of the chain's output. 0% by default (off). |
 
-Each of the five sections (Drop, Shift, Slapback, Vibrato, Warmth) also has
-its own on/off switch, independent of its Mix knob — see "How it works" above.
+Each of the four sections (Shift, Slapback, Vibrato, Warmth) also has its own
+on/off switch, independent of its Mix knob — see "How it works" above.
 
 ## Factory presets
 
@@ -139,7 +130,9 @@ The plugin exposes eight factory presets (`Source/PluginProcessor.cpp`,
 `getPresets()`) through the host's own preset menu (in Logic: the preset
 field at the top of the plugin window) — no in-plugin preset UI needed:
 
-- **Default** — the settings above.
+- **Default** — Pitch L/R +300 cents (matching sign — a mono-compatible
+  pitch-up, not a wide microshift), Focus at its own 150Hz default, Mix 50%.
+  See "JJ Dark Vocal (Up)" below for where +300 cents comes from.
 - **JJ Cale Vocal** — width turned way down (Pitch L/R ±4 ct, Mix 18%) rather
   than off, for a touch of doubling glue without an obvious wide effect,
   plus a single low-feedback slapback (Time 100 ms, Feedback 12%, Mix 20%)
@@ -168,40 +161,46 @@ field at the top of the plugin window) — no in-plugin preset UI needed:
   rolloff was nearly identical between the two takes (spectral tilt
   ~−6.2 dB/oct either way) — top-end darkness wasn't what distinguished
   them — while low-mid "chest" body and fundamental pitch did differ
-  substantially. This preset uses **Drop on** (−3 semitones, 100% mix) and
-  **Warmth on** with **Body** engaged (Tone 2.8 kHz, Drive 25%, Body 70%,
-  Mix 70%) for a lower, chestier voice. Width and slapback stay off, with
-  the same light Cajun-Moon-style vibrato as a finishing touch.
+  substantially. This preset uses Pitch L/R at **−300 cents** with Focus
+  turned down to 25 Hz and Mix at 100% (so the shift covers the full band,
+  not just what's above the usual 150Hz Focus default), plus **Warmth on**
+  with **Body** engaged (Tone 2.8 kHz, Drive 25%, Body 70%, Mix 70%) for a
+  lower, chestier voice. Slapback stays off, with the same light
+  Cajun-Moon-style vibrato as a finishing touch.
 - **JJ Dark Vocal (Up)** — the corrected, literal vocal_1 (normal) →
   vocal_2 (processed) match. Cross-correlating resampled vocal_1 windows
   against time-aligned vocal_2 windows (which sidesteps the octave-error
   risk of per-file absolute pitch tracking) put vocal_2 consistently
   *above* vocal_1 in pitch, by roughly 2–3 semitones (noisy per-window
-  estimates, median 2.36 st); **Drop on** at **+3 semitones** (a clean,
-  easy-to-dial-in round number in that range) is used here instead of JJ
-  Dark Vocal's −3. Warmth's **Body** is left at 0% rather than boosted,
-  since vocal_2's own 80–160Hz band actually sat *below* vocal_1's, not
-  above it — unlike JJ Dark Vocal, this preset doesn't add chest fullness.
-  Tone/Drive/Mix are carried over unchanged for the same rolled-off top end
-  both presets share.
-- **Octave Width** — a stereo width effect built from Drop's independent
-  L/R rather than Shift's cents-level microshift: the left channel drops a
-  full octave (Drop Amount L −12 st), the right stays at pitch (Drop Amount
-  R 0 st), blended at 55% so the dry fundamental stays audible under the
-  sub-octave layer. Reads more like an old octave pedal panned across the
-  stereo field than a chorus-y doubler. Shift, Slapback, Vibrato and Warmth
-  all stay off so the technique reads clearly on its own.
+  estimates, median 2.36 st); Pitch L/R at **+300 cents** (a clean,
+  easy-to-dial-in round number in that range — also Pitch L/R's own
+  parameter default, see Controls above) is used here instead of JJ Dark
+  Vocal's −300. Same Focus-down/Mix-100% full-band setup as JJ Dark Vocal.
+  Warmth's **Body** is left at 0% rather than boosted, since vocal_2's own
+  80–160Hz band actually sat *below* vocal_1's, not above it — unlike JJ
+  Dark Vocal, this preset doesn't add chest fullness. Tone/Drive/Mix are
+  carried over unchanged for the same rolled-off top end both presets
+  share.
+- **Octave Width** — a stereo width effect using Shift's independent L/R at
+  the full-octave end of its range rather than the cents-level microshift
+  territory Default/JJ Cale Vocal live in: the left channel drops a full
+  octave (Pitch L −1200 ct), the right stays at pitch (Pitch R 0 ct),
+  blended at 55% so the dry fundamental stays audible under the sub-octave
+  layer, with Focus down low so the drop covers the full band. Reads more
+  like an old octave pedal panned across the stereo field than a chorus-y
+  doubler. Slapback, Vibrato and Warmth all stay off so the technique reads
+  clearly on its own.
 - **Slapback Twang** — the classic rockabilly move: a bright, dry signal
   with nothing but one fairly hot slapback repeat (Feedback 25% for a
   couple of decaying echoes rather than a single one). Everything else
-  (Shift, Vibrato, Warmth) stays off on purpose, including Warmth, so the
-  top end stays open/twangy rather than rolling dark.
+  (Shift, Vibrato, Warmth) stays off on purpose, so the top end stays
+  open/twangy rather than rolling dark.
 - **Deep Baritone** — JJ Dark Vocal pushed further into effect territory
-  rather than a natural-sounding voice: Drop at −7 semitones (vs JJ Dark
-  Vocal's −3) with Warmth's Body and Drive both turned up further, for a
-  growly, monster-movie-trailer low end. No Vibrato here (unlike the other
-  dark/warm presets) — a wobble reads as comic rather than menacing at this
-  depth.
+  rather than a natural-sounding voice: Pitch L/R at **−700 cents** (vs JJ
+  Dark Vocal's −300) with Warmth's Body and Drive both turned up further,
+  for a growly, monster-movie-trailer low end. No Vibrato here (unlike the
+  other dark/warm presets) — a wobble reads as comic rather than menacing
+  at this depth.
 
 To add more presets, extend the `std::array<Preset, N>` returned by
 `getPresets()` in `PluginProcessor.cpp` (and bump `N`).
@@ -238,10 +237,9 @@ This builds three targets:
 CMakeLists.txt              JUCE plugin target (AU, VST3, Standalone)
 Source/
   PluginProcessor.h/.cpp    Parameters (APVTS) + the per-block audio path
-  PluginEditor.h/.cpp       GUI: Drop + Shift knobs, plus separate Slapback, Vibrato and Warmth sections
+  PluginEditor.h/.cpp       GUI: Shift knobs, plus separate Slapback, Vibrato and Warmth sections
   DSP/
-    PitchDrop.h              Dual-tap crossfaded delay-line shifter tuned for semitone-scale drops
-    PitchShifter.h           Same technique, tuned for the Shift section's ±50-cent micro-detune
+    PitchShifter.h           Dual-tap crossfaded delay-line pitch shifter, ±1200 cents
     ModulatedDelay.h         Short delay + LFO wobble (used by both Width and Vibrato)
     SlapbackDelay.h          Mono feedback delay with damped repeats (echo)
     Warmth.h                 Low-shelf body boost + low-pass + soft saturation tone stage on the final output
