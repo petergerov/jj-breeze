@@ -152,6 +152,74 @@ public:
         g.setColour (GearPalette::chassisBottom);
         g.drawLine ({ hub.getCentre().translated (-2.2f, -1.0f), hub.getCentre().translated (2.2f, 1.0f) }, 1.0f);
     }
+
+    // Tooltips, styled and sized: the default LookAndFeel wraps at 400px,
+    // which is most of this plugin's own window width, and drops the box
+    // right next to the cursor — in a UI this dense that meant tooltips
+    // routinely covered several neighbouring knobs at once. A narrower wrap
+    // width plus flipping to whichever side/edge keeps the whole box inside
+    // the editor (rather than just clamping after the fact) fixes the
+    // overlap; the LED-readout look matches the rest of the panel instead
+    // of the default plain grey box.
+    juce::Rectangle<int> getTooltipBounds (const juce::String& tipText, juce::Point<int> screenPos,
+                                            juce::Rectangle<int> parentArea) override
+    {
+        const auto tl = layoutTooltipText (tipText);
+        const int w = (int) std::ceil (tl.getWidth())  + tooltipPadX * 2;
+        const int h = (int) std::ceil (tl.getHeight()) + tooltipPadY * 2;
+
+        // Prefer below-right of the cursor; flip to the other side of
+        // whichever axis would otherwise run off the editor's edge, so the
+        // box never has to be clamped on top of the control being hovered.
+        constexpr int gap = 14;
+        int x = screenPos.x + gap;
+        if (x + w > parentArea.getRight())
+            x = screenPos.x - gap - w;
+
+        int y = screenPos.y + gap;
+        if (y + h > parentArea.getBottom())
+            y = screenPos.y - gap - h;
+
+        return juce::Rectangle<int> (x, y, w, h).constrainedWithin (parentArea);
+    }
+
+    void drawTooltip (juce::Graphics& g, const juce::String& text, int width, int height) override
+    {
+        using namespace GearPalette;
+        const juce::Rectangle<float> bounds (0.0f, 0.0f, (float) width, (float) height);
+
+        g.setColour (chassisBottom.withAlpha (0.5f));
+        g.fillRoundedRectangle (bounds.translated (0.0f, 1.5f), 6.0f);
+
+        g.setColour (ledBackground.withAlpha (0.97f));
+        g.fillRoundedRectangle (bounds, 6.0f);
+        g.setColour (accent.withAlpha (0.6f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.2f);
+
+        layoutTooltipText (text).draw (g, bounds.reduced ((float) tooltipPadX, (float) tooltipPadY));
+    }
+
+private:
+    // Kept narrow on purpose (this plugin's own window is only 480px wide
+    // by default) — see the comment on getTooltipBounds() above.
+    static constexpr int tooltipMaxWidth = 200;
+    static constexpr int tooltipPadX = 10;
+    static constexpr int tooltipPadY = 8;
+
+    // Shared by getTooltipBounds() and drawTooltip() so both always agree
+    // on exactly how the text wraps — drawTooltip only gets a width/height,
+    // not the layout that produced them.
+    static juce::TextLayout layoutTooltipText (const juce::String& text)
+    {
+        juce::AttributedString s;
+        s.setWordWrap (juce::AttributedString::WordWrap::byWord);
+        s.setJustification (juce::Justification::topLeft);
+        s.append (text, juce::FontOptions (12.5f, juce::Font::plain), GearPalette::textLight);
+
+        juce::TextLayout tl;
+        tl.createLayoutWithBalancedLineLengths (s, (float) tooltipMaxWidth);
+        return tl;
+    }
 };
 
 /** A small illuminated pushbutton, like a hardware unit's IN/bypass switch —
