@@ -323,7 +323,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 8>& JJBreezeAudioProcessor::get
         // Pitch L/R +300ct (matching sign, not opposite — a mono-compatible
         // pitch-up rather than a wide microshift) matches Pitch L/R's own
         // parameter default; see createParameterLayout() for why.
-        { "Default",       300.0f, 300.0f, 15.0f, 15.0f, 150.0f, 50.0f, 1.2f, 3.0f,  0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  false, false },
+        { "Default", 300.0f, 300.0f, 23.0f, 37.0f, 25.0f, 50.0f, 1.2f, 3.0f,  0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  true, true },
 
         // A laid-back, intimate vocal in the JJ Cale direction: the width
         // is turned way down (a few cents, low mix) rather than off, so
@@ -367,22 +367,6 @@ const std::array<JJBreezeAudioProcessor::Preset, 8>& JJBreezeAudioProcessor::get
         // default 150Hz crossover point. Warmth's Body control adds the
         // low-mid "chest" fullness the original analysis found.
         { "JJ Dark Vocal", -300.0f, -300.0f, 15.0f, 15.0f, 25.0f, 100.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 70.0f, 70.0f, true, true, true },
-
-        // "JJ Dark Vocal (Up)": the corrected, literal match to the
-        // vocal_1 (normal) -> vocal_2 (processed) direction — cross-
-        // correlating resampled vocal_1 windows against time-aligned
-        // vocal_2 windows (which sidesteps the octave-error risk of
-        // per-file absolute pitch tracking) put vocal_2 consistently
-        // *above* vocal_1, ~2-3 semitones (noisy per-window estimates,
-        // median 2.36st); +3 semitones (+300 cents) is used here as a
-        // clean, easy-to-dial-in round number in that range — also Pitch
-        // L/R's own parameter default now (see createParameterLayout()).
-        // Warmth's Body control is left off (0%) rather than boosted,
-        // since vocal_2's own 80-160Hz band actually sat *below* vocal_1's,
-        // not above it — unlike "JJ Dark Vocal" above, this preset doesn't
-        // add chest fullness. Focus turned down for the same full-band
-        // reason as JJ Dark Vocal.
-        { "JJ Dark Vocal (Up)", 300.0f, 300.0f, 15.0f, 15.0f, 25.0f, 100.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 0.0f, 70.0f, true, true, true },
 
         // "Octave Width": a stereo width effect using Shift's independent
         // L/R at the full-octave end of its range rather than the
