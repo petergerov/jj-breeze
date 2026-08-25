@@ -11,15 +11,26 @@ host). It sits between two well-known reference points:
 jj-breeze implements the same core widening technique — it is *not* a
 clone of either product's code or presets — but deliberately exposes far
 fewer controls than both, aiming for "turn one or two knobs and it sounds
-right." It also adds a separate slapback echo section, a Vibrato section,
-and a Warmth tone stage, plus "JJ Cale Vocal" and "Cajun Moon Vocal" factory
-presets that lean into intimate/narrow and warm/dark rather than wide (see
-Factory presets below) — hence the name, a nod to JJ Cale's "Call Me the
-Breeze."
+right." It also adds a separate slapback echo section, a Vibrato section, a
+Warmth tone stage, and a Drop section (a static, semitone-scale pitch shift
+on the voice itself), plus "JJ Cale Vocal", "Cajun Moon Vocal" and "JJ Dark
+Vocal" factory presets that lean into intimate/narrow, warm/dark, and deep/
+dark rather than wide (see Factory presets below) — hence the name, a nod
+to JJ Cale's "Call Me the Breeze."
 
 ## How it works
 
-Each channel runs through:
+Before any of that, **Drop** (`Source/DSP/PitchDrop.h`) can apply a static,
+semitone-scale pitch shift to the voice itself, blended against dry by its
+own Mix knob — everything below (Shift, Slapback, Vibrato, Warmth) then
+treats that blend as its input, the same way it previously treated the raw
+dry signal. It's the same dual-tap crossfaded delay-line technique as the
+Shift section's pitch shifter, just with a longer grain (70ms vs 35ms) and
+a much wider range (±12 semitones vs Shift's ±50 cents) — Shift is tuned
+for a subtle micro-detune "widener," Drop for an audibly deeper/darker
+voice. Off by default (Drop Mix = 0%).
+
+Each channel then runs through:
 
 1. **A dual-tap crossfaded delay-line pitch shifter** (`Source/DSP/PitchShifter.h`)
    — the classic "microshift" technique: two read pointers trail the write
@@ -59,21 +70,25 @@ own Mix knob and the two are then summed, so turning one up doesn't eat into
 the other; with Vibrato Mix at 0 the output is identical to before this
 section existed.
 
-Finally, **a Warmth stage** (`Source/DSP/Warmth.h`) — a low-pass filter
-followed by gentle tanh soft-saturation, applied to the *fully-summed*
-output rather than being another independent lens on dry. Unlike Width/Slap/
-Vibrato, this isn't meant to be a special effect that stacks with the rest —
-it's a final tone-shaping pass for a darker, rounder, more "through an old
-tube amp" character. Off by default (Warmth Mix = 0%). Added after analyzing
-`example/cajunmoon_vocal.mp3` as a reference target: that recording's
-defining trait turned out to be a heavily rolled-off top end (only ~1% of
-its spectral energy above 2kHz), not width, echo, or a strong deliberate
-vibrato — something none of the other sections could produce, hence this
-stage.
+Finally, **a Warmth stage** (`Source/DSP/Warmth.h`) — a low-shelf body boost,
+then a low-pass filter, then gentle tanh soft-saturation, applied to the
+*fully-summed* output rather than being another independent lens on dry.
+Unlike Width/Slap/Vibrato, this isn't meant to be a special effect that
+stacks with the rest — it's a final tone-shaping pass for a darker, rounder,
+more "through an old tube amp" character. Off by default (Warmth Mix = 0%).
+The low-pass + saturation were added after analyzing `example/cajunmoon_vocal.mp3`
+as a reference target: that recording's defining trait turned out to be a
+heavily rolled-off top end (only ~1% of its spectral energy above 2kHz), not
+width, echo, or a strong deliberate vibrato — something none of the other
+sections could produce, hence this stage. The low-shelf **Body** control was
+added later, from a second, more targeted analysis (see "JJ Dark Vocal"
+under Factory presets below) that isolated *pitch* and *low-mid fullness*,
+not top-end rolloff, as what actually separates a "dark" take from a
+"normal" one.
 
-All four sections — Shift, Slapback, Vibrato, Warmth — have their own lit
-on/off switch in the UI. Turning one off both bypasses its contribution to
-the output (its DSP keeps running internally, so re-enabling it is
+All five sections — Drop, Shift, Slapback, Vibrato, Warmth — have their own
+lit on/off switch in the UI. Turning one off both bypasses its contribution
+to the output (its DSP keeps running internally, so re-enabling it is
 click-free) and collapses its knobs out of the way, so a section that isn't
 doing anything doesn't stay on screen distracting you.
 
@@ -85,6 +100,8 @@ delay values you want directly.
 
 | Control | Range | What it does |
 |---|---|---|
+| **Drop Amount** | −12 to +12 semitones | Static pitch shift applied to the voice itself, ahead of every other section. Default −3 (down). Negative/deeper is the "dark voice" direction; unlike Pitch L/R this isn't a subtle detune — a few semitones is clearly audible. |
+| **Drop Mix** | 0–100% | Blend of the pitch-dropped voice with the plain dry signal. 0% by default (off). |
 | **Pitch L** | −50 to +50 cents | Pitch shift applied to the left channel. Default +12 (up). |
 | **Pitch R** | −50 to +50 cents | Pitch shift applied to the right channel. Default −12 (down) — opposite Pitch L gives the classic wide microshift; matching signs instead gives a more mono-compatible width via delay offset alone. |
 | **Delay L** | 0–40 ms | Base delay time on the left channel, with subtle built-in modulation. |
@@ -99,14 +116,15 @@ delay values you want directly.
 | **Vibrato Mix** | 0–100% | Blend of the wobbled signal with dry. At 100% it's a true vibrato (fully replaces the static pitch); lower values give a wobbly chorus-like blend instead. 0% by default (off). |
 | **Warmth Tone** | 500 Hz–12 kHz | Low-pass cutoff applied to the final output. Lower = darker/warmer. Default 3.5 kHz. |
 | **Warmth Drive** | 0–100% | Soft (tanh) saturation amount, applied after the low-pass. 0% = filter only, no added harmonics. |
-| **Warmth Mix** | 0–100% | Blend of the warmed (filtered + saturated) signal with the rest of the chain's output. 0% by default (off). |
+| **Warmth Body** | 0–100% | Low-shelf boost at a fixed 150Hz corner, up to +6dB, applied before the low-pass. 0% = no boost. Restores the chest fullness a pitch-down (Drop) doesn't add on its own. |
+| **Warmth Mix** | 0–100% | Blend of the warmed (shelved + filtered + saturated) signal with the rest of the chain's output. 0% by default (off). |
 
-Each of the four sections (Shift, Slapback, Vibrato, Warmth) also has its own
-on/off switch, independent of its Mix knob — see "How it works" above.
+Each of the five sections (Drop, Shift, Slapback, Vibrato, Warmth) also has
+its own on/off switch, independent of its Mix knob — see "How it works" above.
 
 ## Factory presets
 
-The plugin exposes three factory presets (`Source/PluginProcessor.cpp`,
+The plugin exposes four factory presets (`Source/PluginProcessor.cpp`,
 `getPresets()`) through the host's own preset menu (in Logic: the preset
 field at the top of the plugin window) — no in-plugin preset UI needed:
 
@@ -125,6 +143,23 @@ field at the top of the plugin window) — no in-plugin preset UI needed:
   width off, slapback off, a light touch of Vibrato (1.1 Hz, 3.5 ms depth,
   15% mix — present but no longer the main event), and **Warmth on** (Tone
   2.8 kHz, Drive 25%, Mix 70%) carrying the actual character.
+- **JJ Dark Vocal** — built from a second, more targeted comparison: two
+  takes of the same performance, `example/cajunmoon_vocal_vocal_1.mp3` (the
+  dark one) and `example/cajunmoon_vocal_vocal_2.mp3` (the normal one).
+  Unlike the Cajun Moon analysis above, overall top-end rolloff turned out
+  to be nearly identical between the two takes (spectral tilt ~−6.2 dB/oct
+  either way) — top-end darkness wasn't what distinguished them. Two other
+  measurements were: (1) autocorrelation-based pitch tracking put the dark
+  take's median fundamental at ~160Hz vs ~193Hz for the normal take, roughly
+  3 semitones lower, and (2) octave-band analysis found the dark take's
+  80–160Hz "chest" band sitting only ~3dB below its own spectral peak,
+  vs ~16dB down in the normal take — i.e. far more low-mid body. So this
+  preset leans on the two controls that target exactly those two traits:
+  **Drop on** (−3 semitones, 100% mix) for the pitch, and **Warmth on**
+  with **Body** engaged (Tone 2.8 kHz, Drive 25%, Body 70%, Mix 70%) for the
+  chest fullness plus the same rolled-off top end as Cajun Moon Vocal. Width
+  and slapback stay off, with the same light Cajun-Moon-style vibrato as a
+  finishing touch.
 
 To add more presets, extend the `std::array<Preset, N>` returned by
 `getPresets()` in `PluginProcessor.cpp` (and bump `N`).
@@ -161,10 +196,11 @@ This builds three targets:
 CMakeLists.txt              JUCE plugin target (AU, VST3, Standalone)
 Source/
   PluginProcessor.h/.cpp    Parameters (APVTS) + the per-block audio path
-  PluginEditor.h/.cpp       GUI: Shift knobs + separate Slapback, Vibrato and Warmth sections
+  PluginEditor.h/.cpp       GUI: Drop + Shift knobs, plus separate Slapback, Vibrato and Warmth sections
   DSP/
-    PitchShifter.h          Dual-tap crossfaded delay-line pitch shifter
-    ModulatedDelay.h        Short delay + LFO wobble (used by both Width and Vibrato)
+    PitchDrop.h              Dual-tap crossfaded delay-line shifter tuned for semitone-scale drops
+    PitchShifter.h           Same technique, tuned for the Shift section's ±50-cent micro-detune
+    ModulatedDelay.h         Short delay + LFO wobble (used by both Width and Vibrato)
     SlapbackDelay.h          Mono feedback delay with damped repeats (echo)
-    Warmth.h                 Low-pass + soft saturation tone stage on the final output
+    Warmth.h                 Low-shelf body boost + low-pass + soft saturation tone stage on the final output
 ```

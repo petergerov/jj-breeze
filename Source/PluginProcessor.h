@@ -6,6 +6,7 @@
 #include <juce_dsp/juce_dsp.h>
 
 #include "DSP/PitchShifter.h"
+#include "DSP/PitchDrop.h"
 #include "DSP/ModulatedDelay.h"
 #include "DSP/SlapbackDelay.h"
 #include "DSP/Warmth.h"
@@ -25,11 +26,19 @@ namespace ParamIDs
     static const juce::String vibratoDepth = "vibratoDepth"; // ms
     static const juce::String vibratoMix   = "vibratoMix";   // 0..1
 
-    // Warmth: a final tone stage (low-pass + soft saturation) applied to
-    // the fully-summed output, for a darker/rounder character no other
-    // section provides.
+    // Drop: a static, semitone-scale pitch shift applied to the voice
+    // itself (before any other section), for a deeper/darker character —
+    // distinct from the Shift section's ±50-cent micro-detune widener.
+    // Off by default (Drop Mix = 0%), like Slapback/Vibrato/Warmth.
+    static const juce::String dropAmount   = "dropAmount";   // semitones, bipolar
+    static const juce::String dropMix      = "dropMix";      // 0..1
+
+    // Warmth: a final tone stage (low-shelf body boost + low-pass + soft
+    // saturation) applied to the fully-summed output, for a darker/rounder
+    // character no other section provides.
     static const juce::String warmthTone   = "warmthTone";   // Hz, low-pass cutoff
     static const juce::String warmthDrive  = "warmthDrive";  // 0..1, saturation amount
+    static const juce::String warmthBody   = "warmthBody";   // 0..1, fixed-150Hz low-shelf boost amount
     static const juce::String warmthMix    = "warmthMix";    // 0..1
 
     // Per-section on/off — bypasses that section's contribution to the
@@ -38,6 +47,7 @@ namespace ParamIDs
     static const juce::String shiftOn    = "shiftOn";
     static const juce::String slapOn     = "slapOn";
     static const juce::String vibratoOn  = "vibratoOn";
+    static const juce::String dropOn     = "dropOn";
     static const juce::String warmthOn   = "warmthOn";
 }
 
@@ -87,11 +97,12 @@ private:
     {
         const char* name;
         float pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix,
-              vibratoRate, vibratoDepth, vibratoMix, warmthTone, warmthDrive, warmthMix;
-        bool shiftOn, slapOn, vibratoOn, warmthOn;
+              vibratoRate, vibratoDepth, vibratoMix, dropAmount, dropMix,
+              warmthTone, warmthDrive, warmthBody, warmthMix;
+        bool shiftOn, slapOn, vibratoOn, dropOn, warmthOn;
     };
 
-    static const std::array<Preset, 3>& getPresets();
+    static const std::array<Preset, 4>& getPresets();
     void applyPreset (int index);
     int currentProgram = 0;
 
@@ -126,6 +137,12 @@ private:
 
     ChannelVoice leftVoice, rightVoice;
     SlapbackDelay slapback; // mono, centered — separate from the L/R width voices above
+
+    // Drop: a static, semitone-scale pitch shift on the voice itself,
+    // applied before every other section (Shift/Slapback/Vibrato/Warmth all
+    // then act on its output the same as they would on the plain dry
+    // signal) — see ParamIDs::dropAmount/dropMix above and PitchDrop.h.
+    PitchDropShifter dropL, dropR;
 
     // Vibrato: continuous LFO-driven pitch modulation via a swept short
     // delay (the classic "delay-based vibrato" technique — reuses

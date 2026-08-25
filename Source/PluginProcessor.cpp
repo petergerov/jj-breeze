@@ -103,10 +103,28 @@ juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::crea
             .withLabel ("%")
             .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
 
-    // Warmth: a final tone stage (low-pass + soft saturation) on the fully
-    // summed output — for a darker, rounder character none of the other
-    // sections provide. Off by default (Warmth Mix = 0%), like Slapback
-    // and Vibrato.
+    // Drop: a static, semitone-scale pitch shift on the voice itself —
+    // distinct from Shift's ±50-cent micro-detune widener, and the main
+    // driver of the "JJ Dark Vocal" character (see README.md). Off by
+    // default (Drop Mix = 0%), like Slapback/Vibrato/Warmth.
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::dropAmount, 1 }, "Drop Amount",
+        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), -3.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("st")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " st"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::dropMix, 1 }, "Drop Mix",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("%")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
+
+    // Warmth: a final tone stage (low-shelf body boost + low-pass + soft
+    // saturation) on the fully summed output — for a darker, rounder
+    // character none of the other sections provide. Off by default
+    // (Warmth Mix = 0%), like Slapback, Vibrato and Drop.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ParamIDs::warmthTone, 1 }, "Warmth Tone",
         juce::NormalisableRange<float> (500.0f, 12000.0f, 1.0f, 0.3f), 3500.0f,
@@ -117,6 +135,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::crea
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ParamIDs::warmthDrive, 1 }, "Warmth Drive",
         juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 20.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("%")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::warmthBody, 1 }, "Warmth Body",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f,
         juce::AudioParameterFloatAttributes()
             .withLabel ("%")
             .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
@@ -139,6 +164,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::crea
 
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { ParamIDs::vibratoOn, 1 }, "Vibrato On", false));
+
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamIDs::dropOn, 1 }, "Drop On", false));
 
     params.push_back (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { ParamIDs::warmthOn, 1 }, "Warmth On", false));
@@ -166,6 +194,12 @@ void JJBreezeAudioProcessor::prepareToPlay (double sampleRate, int)
 
     slapback.prepare (sampleRate);
 
+    // Longer grain than the Shift widener's PitchShifter (70ms vs 35ms) —
+    // Drop moves by whole semitones rather than cents, and the longer grain
+    // keeps the tap-crossfade rate down at that shift size (see PitchDrop.h).
+    dropL.prepare (sampleRate);
+    dropR.prepare (sampleRate);
+
     vibratoL.prepare (sampleRate);
     vibratoR.prepare (sampleRate);
     // Fixed small center delay so the LFO-swept delay can move both up and
@@ -185,6 +219,8 @@ void JJBreezeAudioProcessor::releaseResources()
     leftVoice.reset();
     rightVoice.reset();
     slapback.reset();
+    dropL.reset();
+    dropR.reset();
     vibratoL.reset();
     vibratoR.reset();
     warmthL.reset();
@@ -226,8 +262,11 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const float vibRateHz   = apvts.getRawParameterValue (ParamIDs::vibratoRate)->load();
     const float vibDepthMs  = apvts.getRawParameterValue (ParamIDs::vibratoDepth)->load();
     const float vibMixAmt   = apvts.getRawParameterValue (ParamIDs::vibratoMix)->load() * 0.01f;
+    const float dropSemitones = apvts.getRawParameterValue (ParamIDs::dropAmount)->load();
+    const float dropMixAmt    = apvts.getRawParameterValue (ParamIDs::dropMix)->load() * 0.01f;
     const float warmthToneHz  = apvts.getRawParameterValue (ParamIDs::warmthTone)->load();
     const float warmthDriveAmt = apvts.getRawParameterValue (ParamIDs::warmthDrive)->load() * 0.01f;
+    const float warmthBodyAmt  = apvts.getRawParameterValue (ParamIDs::warmthBody)->load() * 0.01f;
     const float warmthMixAmt  = apvts.getRawParameterValue (ParamIDs::warmthMix)->load() * 0.01f;
 
     // Section on/off — each section's DSP still runs below (for click-free
@@ -235,6 +274,7 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const bool shiftIsOn   = apvts.getRawParameterValue (ParamIDs::shiftOn)->load() > 0.5f;
     const bool slapIsOn    = apvts.getRawParameterValue (ParamIDs::slapOn)->load() > 0.5f;
     const bool vibratoIsOn = apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
+    const bool dropIsOn    = apvts.getRawParameterValue (ParamIDs::dropOn)->load() > 0.5f;
     const bool warmthIsOn  = apvts.getRawParameterValue (ParamIDs::warmthOn)->load() > 0.5f;
 
     leftVoice.pitchShifter.setShiftCents (pitchLCents);
@@ -253,6 +293,9 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     slapback.setTimeMs (slapTimeMs);
     slapback.setFeedback (slapFeedbk);
 
+    dropL.setShiftSemitones (dropSemitones);
+    dropR.setShiftSemitones (dropSemitones);
+
     vibratoL.lfoRateHz  = vibRateHz;
     vibratoL.lfoDepthMs = vibDepthMs;
     vibratoR.lfoRateHz  = vibRateHz;
@@ -262,6 +305,8 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     warmthR.setToneHz (warmthToneHz);
     warmthL.setDrive (warmthDriveAmt);
     warmthR.setDrive (warmthDriveAmt);
+    warmthL.setBodyAmount (warmthBodyAmt);
+    warmthR.setBodyAmount (warmthBodyAmt);
 
     // If the host feeds us a mono input duplicated across the stereo bus (or
     // an actual mono bus), both channels below already point at valid data
@@ -274,18 +319,29 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         const float dryL = left[n];
         const float dryR = right[n];
 
+        // Drop runs first, ahead of every other section: a static,
+        // semitone-scale pitch shift on the voice itself (see PitchDrop.h),
+        // crossfaded against the plain dry signal by Drop Mix. Everything
+        // below treats the result — "voiceL/voiceR" — as its input, the
+        // same way it previously treated dryL/dryR directly, so with Drop
+        // off (the default) voiceL/voiceR are just dryL/dryR again.
+        const float droppedL = dropL.processSample (dryL);
+        const float droppedR = dropR.processSample (dryR);
+        const float voiceL = dropIsOn ? dryL + dropMixAmt * (droppedL - dryL) : dryL;
+        const float voiceR = dropIsOn ? dryR + dropMixAmt * (droppedR - dryR) : dryR;
+
         // Focus is a crossover, not a filter on the wet signal: everything
         // below the Focus point passes through untouched, and only the band
         // above it goes through the pitch shifter + delay (matches how
         // Soundtoys MicroShift's Focus control works).
-        const float lowL  = leftVoice.lowBandFilter.processSample (dryL);
-        float highL = leftVoice.highBandFilter.processSample (dryL);
+        const float lowL  = leftVoice.lowBandFilter.processSample (voiceL);
+        float highL = leftVoice.highBandFilter.processSample (voiceL);
         highL = leftVoice.pitchShifter.processSample (highL);
         highL = leftVoice.delay.processSample (highL);
         const float wetL = lowL + highL;
 
-        const float lowR  = rightVoice.lowBandFilter.processSample (dryR);
-        float highR = rightVoice.highBandFilter.processSample (dryR);
+        const float lowR  = rightVoice.lowBandFilter.processSample (voiceR);
+        float highR = rightVoice.highBandFilter.processSample (voiceR);
         highR = rightVoice.pitchShifter.processSample (highR);
         highR = rightVoice.delay.processSample (highR);
         const float wetR = lowR + highR;
@@ -293,26 +349,26 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         // Slapback is a separate, mono/centered echo — it's added on top of
         // the width-processed output rather than crossfaded by Mix, so it
         // reads as a distinct discrete repeat rather than part of the width.
-        const float slapEcho = slapback.processSample (0.5f * (dryL + dryR)) * slapMixAmt;
+        const float slapEcho = slapback.processSample (0.5f * (voiceL + voiceR)) * slapMixAmt;
 
         // Vibrato: continuous LFO-swept delay (pitch wobble), independent of
         // the static Width detune — the "Cajun Moon"-style swirl.
-        const float vibL = vibratoL.processSample (dryL);
-        const float vibR = vibratoR.processSample (dryR);
+        const float vibL = vibratoL.processSample (voiceL);
+        const float vibR = vibratoR.processSample (voiceR);
 
-        // Width and Vibrato are two independent "lenses" on the same dry
-        // signal, each crossfaded against that same dry baseline and then
+        // Width and Vibrato are two independent "lenses" on the same voice
+        // signal, each crossfaded against that same baseline and then
         // summed (rather than sequentially crossfaded), so turning one up
         // doesn't eat into the other. With vibratoMix at 0 this reduces
-        // exactly to the previous dry*(1-mix) + wet*mix formula.
-        const float shiftMixL = shiftIsOn ? mix * (wetL - dryL) : 0.0f;
-        const float shiftMixR = shiftIsOn ? mix * (wetR - dryR) : 0.0f;
-        const float vibMixL   = vibratoIsOn ? vibMixAmt * (vibL - dryL) : 0.0f;
-        const float vibMixR   = vibratoIsOn ? vibMixAmt * (vibR - dryR) : 0.0f;
+        // exactly to the previous voice*(1-mix) + wet*mix formula.
+        const float shiftMixL = shiftIsOn ? mix * (wetL - voiceL) : 0.0f;
+        const float shiftMixR = shiftIsOn ? mix * (wetR - voiceR) : 0.0f;
+        const float vibMixL   = vibratoIsOn ? vibMixAmt * (vibL - voiceL) : 0.0f;
+        const float vibMixR   = vibratoIsOn ? vibMixAmt * (vibR - voiceR) : 0.0f;
         const float slapOut   = slapIsOn ? slapEcho : 0.0f;
 
-        const float outL = dryL + shiftMixL + vibMixL + slapOut;
-        const float outR = dryR + shiftMixR + vibMixR + slapOut;
+        const float outL = voiceL + shiftMixL + vibMixL + slapOut;
+        const float outR = voiceR + shiftMixR + vibMixR + slapOut;
 
         // Warmth is a final tone stage on the fully-summed output (low-pass
         // + soft saturation), not another independent "lens" on dry — it's
@@ -331,17 +387,17 @@ juce::AudioProcessorEditor* JJBreezeAudioProcessor::createEditor()
     return new JJBreezeAudioProcessorEditor (*this);
 }
 
-const std::array<JJBreezeAudioProcessor::Preset, 3>& JJBreezeAudioProcessor::getPresets()
+const std::array<JJBreezeAudioProcessor::Preset, 4>& JJBreezeAudioProcessor::getPresets()
 {
-    // pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix, vibratoRate, vibratoDepth, vibratoMix, warmthTone, warmthDrive, warmthMix, shiftOn, slapOn, vibratoOn, warmthOn
-    static const std::array<Preset, 3> presets { {
-        { "Default",       12.0f, -12.0f, 15.0f, 15.0f, 150.0f, 50.0f, 110.0f, 15.0f,  0.0f, 1.2f, 3.0f,  0.0f,  3500.0f, 20.0f, 0.0f, true,  false, false, false },
+    // pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix, vibratoRate, vibratoDepth, vibratoMix, dropAmount, dropMix, warmthTone, warmthDrive, warmthBody, warmthMix, shiftOn, slapOn, vibratoOn, dropOn, warmthOn
+    static const std::array<Preset, 4> presets { {
+        { "Default",       12.0f, -12.0f, 15.0f, 15.0f, 150.0f, 50.0f, 110.0f, 15.0f,  0.0f, 1.2f, 3.0f,  0.0f, -3.0f, 0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  false, false, false, false },
 
         // A laid-back, intimate vocal in the JJ Cale direction: the width
         // is turned way down (a few cents, low mix) rather than off, so
         // there's still some doubling glue, plus a single, low-feedback
         // slapback repeat instead of the wide microshift being the star.
-        { "JJ Cale Vocal",  4.0f,  -4.0f,  8.0f, 10.0f, 300.0f, 18.0f, 100.0f, 12.0f, 20.0f, 1.2f, 3.0f,  0.0f,  3500.0f, 20.0f, 0.0f, true,  true,  false, false },
+        { "JJ Cale Vocal",  4.0f,  -4.0f,  8.0f, 10.0f, 300.0f, 18.0f, 100.0f, 12.0f, 20.0f, 1.2f, 3.0f,  0.0f, -3.0f, 0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  true,  false, false, false },
 
         // "Cajun Moon"-style warmth: retuned against an actual reference
         // recording (see example/cajunmoon_vocal.mp3) rather than guessed.
@@ -353,7 +409,23 @@ const std::array<JJBreezeAudioProcessor::Preset, 3>& JJBreezeAudioProcessor::get
         // stay off, vibrato is now a light touch rather than the main
         // event, and Warmth — not vibrato — is what actually carries the
         // "Cajun Moon" character here.
-        { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 70.0f, false, false, true, true },
+        { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, -3.0f, 0.0f, 2800.0f, 25.0f, 0.0f, 70.0f, false, false, true, false, true },
+
+        // "JJ Dark Vocal": built by comparing two takes of the same
+        // performance (example/cajunmoon_vocal_vocal_1.mp3, the dark one,
+        // vs _vocal_2.mp3, the normal one). Unlike the Cajun Moon analysis
+        // above, overall top-end rolloff was nearly identical between the
+        // two (~-6.2 dB/oct either way) — the dark take's defining trait
+        // here was instead (1) a fundamental pitch ~3 semitones lower
+        // (measured median F0 160Hz vs 193Hz) and (2) far more low-mid
+        // "chest" body: its 80-160Hz band sat only ~3dB below its spectral
+        // peak, vs ~16dB down in the normal take. So Drop does the actual
+        // pitch-down (-3 semitones, full mix, ahead of everything else in
+        // the chain), Warmth's new Body control restores the chest
+        // fullness a pitch-down alone doesn't add, and width/slapback stay
+        // off with the same light Cajun-Moon-style vibrato as a finishing
+        // touch.
+        { "JJ Dark Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, -3.0f, 100.0f, 2800.0f, 25.0f, 70.0f, 70.0f, false, false, true, true, true },
     } };
     return presets;
 }
@@ -397,13 +469,17 @@ void JJBreezeAudioProcessor::applyPreset (int index)
     setParam (ParamIDs::vibratoRate,  preset.vibratoRate);
     setParam (ParamIDs::vibratoDepth, preset.vibratoDepth);
     setParam (ParamIDs::vibratoMix,   preset.vibratoMix);
+    setParam (ParamIDs::dropAmount,   preset.dropAmount);
+    setParam (ParamIDs::dropMix,      preset.dropMix);
     setParam (ParamIDs::warmthTone,   preset.warmthTone);
     setParam (ParamIDs::warmthDrive,  preset.warmthDrive);
+    setParam (ParamIDs::warmthBody,   preset.warmthBody);
     setParam (ParamIDs::warmthMix,    preset.warmthMix);
 
     setParam (ParamIDs::shiftOn,   preset.shiftOn   ? 1.0f : 0.0f);
     setParam (ParamIDs::slapOn,    preset.slapOn    ? 1.0f : 0.0f);
     setParam (ParamIDs::vibratoOn, preset.vibratoOn ? 1.0f : 0.0f);
+    setParam (ParamIDs::dropOn,    preset.dropOn    ? 1.0f : 0.0f);
     setParam (ParamIDs::warmthOn,  preset.warmthOn  ? 1.0f : 0.0f);
 }
 
