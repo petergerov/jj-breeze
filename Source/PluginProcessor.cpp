@@ -1,0 +1,347 @@
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+
+JJBreezeAudioProcessor::JJBreezeAudioProcessor()
+    : AudioProcessor (BusesProperties()
+                           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
+{
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::createParameterLayout()
+{
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::pitchL, 1 }, "Pitch L",
+        juce::NormalisableRange<float> (-50.0f, 50.0f, 0.01f), 12.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("cents")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " ct"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::pitchR, 1 }, "Pitch R",
+        juce::NormalisableRange<float> (-50.0f, 50.0f, 0.01f), -12.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("cents")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " ct"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::delayL, 1 }, "Delay L",
+        juce::NormalisableRange<float> (0.0f, 40.0f, 0.01f), 15.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("ms")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " ms"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::delayR, 1 }, "Delay R",
+        juce::NormalisableRange<float> (0.0f, 40.0f, 0.01f), 15.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("ms")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " ms"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::focus, 1 }, "Focus",
+        juce::NormalisableRange<float> (20.0f, 10000.0f, 1.0f, 0.25f), 150.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("Hz")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " Hz"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::mix, 1 }, "Mix",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("%")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
+
+    // Slapback echo: a separate, mono/centered discrete repeat, independent
+    // of the L/R width controls above. Off by default (Slap Mix = 0%) so it
+    // doesn't change the existing sound unless deliberately dialed in.
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::slapTime, 1 }, "Slap Time",
+        juce::NormalisableRange<float> (30.0f, 300.0f, 0.1f), 110.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("ms")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " ms"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::slapFeedback, 1 }, "Slap Feedback",
+        juce::NormalisableRange<float> (0.0f, 70.0f, 0.1f), 15.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("%")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::slapMix, 1 }, "Slap Mix",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("%")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
+
+    // Vibrato: continuous LFO-driven pitch wobble (delay-based, like a
+    // Uni-Vibe's vibrato mode), independent of the static Width detune
+    // above. Off by default (Vibrato Mix = 0%).
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::vibratoRate, 1 }, "Vibrato Rate",
+        juce::NormalisableRange<float> (0.1f, 8.0f, 0.01f, 0.4f), 1.2f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("Hz")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 2) + " Hz"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::vibratoDepth, 1 }, "Vibrato Depth",
+        juce::NormalisableRange<float> (0.0f, 8.0f, 0.01f), 3.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("ms")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " ms"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::vibratoMix, 1 }, "Vibrato Mix",
+        juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("%")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
+
+    return { params.begin(), params.end() };
+}
+
+void JJBreezeAudioProcessor::prepareToPlay (double sampleRate, int)
+{
+    currentSampleRate = sampleRate;
+
+    leftVoice.prepare (sampleRate);
+    rightVoice.prepare (sampleRate);
+
+    // Offset the two channels' delay-modulation LFOs so the width has some
+    // independent left/right movement rather than moving in lockstep.
+    leftVoice.delay.setLfoStartPhase (0.0f);
+    rightVoice.delay.setLfoStartPhase (0.5f);
+
+    juce::dsp::ProcessSpec spec { sampleRate, 1, 1 };
+    leftVoice.lowBandFilter.prepare (spec);
+    leftVoice.highBandFilter.prepare (spec);
+    rightVoice.lowBandFilter.prepare (spec);
+    rightVoice.highBandFilter.prepare (spec);
+
+    slapback.prepare (sampleRate);
+
+    vibratoL.prepare (sampleRate);
+    vibratoR.prepare (sampleRate);
+    // Fixed small center delay so the LFO-swept delay can move both up and
+    // down without ever reaching zero; rate/depth are set from parameters
+    // each block in processBlock().
+    vibratoL.setBaseDelayMs (9.0f);
+    vibratoR.setBaseDelayMs (9.0f);
+    vibratoL.setLfoStartPhase (0.0f);
+    vibratoR.setLfoStartPhase (0.5f);
+}
+
+void JJBreezeAudioProcessor::releaseResources()
+{
+    leftVoice.reset();
+    rightVoice.reset();
+    slapback.reset();
+    vibratoL.reset();
+    vibratoR.reset();
+}
+
+bool JJBreezeAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+    const auto mono = juce::AudioChannelSet::mono();
+    const auto stereo = juce::AudioChannelSet::stereo();
+
+    const auto in = layouts.getMainInputChannelSet();
+    const auto out = layouts.getMainOutputChannelSet();
+
+    if (out != stereo)
+        return false;
+
+    return in == stereo || in == mono;
+}
+
+void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+{
+    juce::ScopedNoDenormals noDenormals;
+
+    const int numSamples = buffer.getNumSamples();
+    const int numOutChannels = getTotalNumOutputChannels();
+
+    // Read control values once per block (these are slow, "macro" controls;
+    // per-sample updates aren't needed and would just cost CPU).
+    const float pitchLCents = apvts.getRawParameterValue (ParamIDs::pitchL)->load();
+    const float pitchRCents = apvts.getRawParameterValue (ParamIDs::pitchR)->load();
+    const float delayLMs    = apvts.getRawParameterValue (ParamIDs::delayL)->load();
+    const float delayRMs    = apvts.getRawParameterValue (ParamIDs::delayR)->load();
+    const float focusHz     = apvts.getRawParameterValue (ParamIDs::focus)->load();
+    const float mix         = apvts.getRawParameterValue (ParamIDs::mix)->load() * 0.01f;
+    const float slapTimeMs  = apvts.getRawParameterValue (ParamIDs::slapTime)->load();
+    const float slapFeedbk  = apvts.getRawParameterValue (ParamIDs::slapFeedback)->load() * 0.01f;
+    const float slapMixAmt  = apvts.getRawParameterValue (ParamIDs::slapMix)->load() * 0.01f;
+    const float vibRateHz   = apvts.getRawParameterValue (ParamIDs::vibratoRate)->load();
+    const float vibDepthMs  = apvts.getRawParameterValue (ParamIDs::vibratoDepth)->load();
+    const float vibMixAmt   = apvts.getRawParameterValue (ParamIDs::vibratoMix)->load() * 0.01f;
+
+    leftVoice.pitchShifter.setShiftCents (pitchLCents);
+    rightVoice.pitchShifter.setShiftCents (pitchRCents);
+    leftVoice.delay.setBaseDelayMs (delayLMs);
+    rightVoice.delay.setBaseDelayMs (delayRMs);
+
+    // Focus crossover coefficients (shared shape for both channels).
+    auto lowCoeffs  = juce::dsp::IIR::Coefficients<float>::makeLowPass  (currentSampleRate, focusHz);
+    auto highCoeffs = juce::dsp::IIR::Coefficients<float>::makeHighPass (currentSampleRate, focusHz);
+    *leftVoice.lowBandFilter.coefficients   = *lowCoeffs;
+    *leftVoice.highBandFilter.coefficients  = *highCoeffs;
+    *rightVoice.lowBandFilter.coefficients  = *lowCoeffs;
+    *rightVoice.highBandFilter.coefficients = *highCoeffs;
+
+    slapback.setTimeMs (slapTimeMs);
+    slapback.setFeedback (slapFeedbk);
+
+    vibratoL.lfoRateHz  = vibRateHz;
+    vibratoL.lfoDepthMs = vibDepthMs;
+    vibratoR.lfoRateHz  = vibRateHz;
+    vibratoR.lfoDepthMs = vibDepthMs;
+
+    // If the host feeds us a mono input duplicated across the stereo bus (or
+    // an actual mono bus), both channels below already point at valid data
+    // because we only support mono-in-stereo-out or stereo-in-stereo-out.
+    float* left  = buffer.getWritePointer (0);
+    float* right = numOutChannels > 1 ? buffer.getWritePointer (1) : buffer.getWritePointer (0);
+
+    for (int n = 0; n < numSamples; ++n)
+    {
+        const float dryL = left[n];
+        const float dryR = right[n];
+
+        // Focus is a crossover, not a filter on the wet signal: everything
+        // below the Focus point passes through untouched, and only the band
+        // above it goes through the pitch shifter + delay (matches how
+        // Soundtoys MicroShift's Focus control works).
+        const float lowL  = leftVoice.lowBandFilter.processSample (dryL);
+        float highL = leftVoice.highBandFilter.processSample (dryL);
+        highL = leftVoice.pitchShifter.processSample (highL);
+        highL = leftVoice.delay.processSample (highL);
+        const float wetL = lowL + highL;
+
+        const float lowR  = rightVoice.lowBandFilter.processSample (dryR);
+        float highR = rightVoice.highBandFilter.processSample (dryR);
+        highR = rightVoice.pitchShifter.processSample (highR);
+        highR = rightVoice.delay.processSample (highR);
+        const float wetR = lowR + highR;
+
+        // Slapback is a separate, mono/centered echo — it's added on top of
+        // the width-processed output rather than crossfaded by Mix, so it
+        // reads as a distinct discrete repeat rather than part of the width.
+        const float slapEcho = slapback.processSample (0.5f * (dryL + dryR)) * slapMixAmt;
+
+        // Vibrato: continuous LFO-swept delay (pitch wobble), independent of
+        // the static Width detune — the "Cajun Moon"-style swirl.
+        const float vibL = vibratoL.processSample (dryL);
+        const float vibR = vibratoR.processSample (dryR);
+
+        // Width and Vibrato are two independent "lenses" on the same dry
+        // signal, each crossfaded against that same dry baseline and then
+        // summed (rather than sequentially crossfaded), so turning one up
+        // doesn't eat into the other. With vibratoMix at 0 this reduces
+        // exactly to the previous dry*(1-mix) + wet*mix formula.
+        left[n]  = dryL + mix * (wetL - dryL) + vibMixAmt * (vibL - dryL) + slapEcho;
+        right[n] = dryR + mix * (wetR - dryR) + vibMixAmt * (vibR - dryR) + slapEcho;
+    }
+}
+
+juce::AudioProcessorEditor* JJBreezeAudioProcessor::createEditor()
+{
+    return new JJBreezeAudioProcessorEditor (*this);
+}
+
+const std::array<JJBreezeAudioProcessor::Preset, 3>& JJBreezeAudioProcessor::getPresets()
+{
+    // pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix, vibratoRate, vibratoDepth, vibratoMix
+    static const std::array<Preset, 3> presets { {
+        { "Default",       12.0f, -12.0f, 15.0f, 15.0f, 150.0f, 50.0f, 110.0f, 15.0f,  0.0f, 1.2f, 3.0f,  0.0f },
+
+        // A laid-back, intimate vocal in the JJ Cale direction: the width
+        // is turned way down (a few cents, low mix) rather than off, so
+        // there's still some doubling glue, plus a single, low-feedback
+        // slapback repeat instead of the wide microshift being the star.
+        { "JJ Cale Vocal",  4.0f,  -4.0f,  8.0f, 10.0f, 300.0f, 18.0f, 100.0f, 12.0f, 20.0f, 1.2f, 3.0f,  0.0f },
+
+        // "Cajun Moon"-style swirl: the width detune is off entirely (0ct,
+        // 0% mix) — the slow, warm vibrato wobble is the character here,
+        // not a static micro-detune — plus a light slapback for presence.
+        { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 15.0f, 1.1f, 3.5f, 55.0f },
+    } };
+    return presets;
+}
+
+int JJBreezeAudioProcessor::getNumPrograms()
+{
+    return (int) getPresets().size();
+}
+
+const juce::String JJBreezeAudioProcessor::getProgramName (int index)
+{
+    const auto& presets = getPresets();
+    if (index >= 0 && index < (int) presets.size())
+        return presets[(size_t) index].name;
+    return {};
+}
+
+void JJBreezeAudioProcessor::applyPreset (int index)
+{
+    const auto& presets = getPresets();
+    if (index < 0 || index >= (int) presets.size())
+        return;
+
+    const auto& preset = presets[(size_t) index];
+
+    auto setParam = [this] (const juce::String& paramID, float value)
+    {
+        if (auto* param = apvts.getParameter (paramID))
+            param->setValueNotifyingHost (param->convertTo0to1 (value));
+    };
+
+    setParam (ParamIDs::pitchL,       preset.pitchL);
+    setParam (ParamIDs::pitchR,       preset.pitchR);
+    setParam (ParamIDs::delayL,       preset.delayL);
+    setParam (ParamIDs::delayR,       preset.delayR);
+    setParam (ParamIDs::focus,        preset.focus);
+    setParam (ParamIDs::mix,          preset.mix);
+    setParam (ParamIDs::slapTime,     preset.slapTime);
+    setParam (ParamIDs::slapFeedback, preset.slapFeedback);
+    setParam (ParamIDs::slapMix,      preset.slapMix);
+    setParam (ParamIDs::vibratoRate,  preset.vibratoRate);
+    setParam (ParamIDs::vibratoDepth, preset.vibratoDepth);
+    setParam (ParamIDs::vibratoMix,   preset.vibratoMix);
+}
+
+void JJBreezeAudioProcessor::setCurrentProgram (int index)
+{
+    if (index < 0 || index >= getNumPrograms())
+        return;
+
+    currentProgram = index;
+    applyPreset (index);
+}
+
+void JJBreezeAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    if (auto state = apvts.copyState(); state.isValid())
+    {
+        if (auto xml = state.createXml())
+            copyXmlToBinary (*xml, destData);
+    }
+}
+
+void JJBreezeAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+        if (xml->hasTagName (apvts.state.getType()))
+            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+}
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new JJBreezeAudioProcessor();
+}

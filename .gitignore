@@ -1,0 +1,7 @@
+build/
+build-*/
+_deps/
+.DS_Store
+*.xcuserstate
+/.idea/
+/.vscode/
