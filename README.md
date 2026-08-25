@@ -231,10 +231,40 @@ This builds three targets:
 - **Standalone** — a runnable app for quick testing without opening a DAW,
   at `build/jj_breeze_artefacts/Release/Standalone/jj-breeze.app`.
 
+### Scripts
+
+- **`scripts/install-local.sh`** — builds AU, VST3 and Standalone and
+  installs them into the standard per-user locations
+  (`~/Library/Audio/Plug-Ins/Components`, `~/Library/Audio/Plug-Ins/VST3`,
+  `~/Applications`) for testing in a DAW on this machine. Runs `auval` on
+  the AU afterwards if available.
+
+  ```sh
+  scripts/install-local.sh                    # Release build
+  scripts/install-local.sh --debug             # Debug build
+  scripts/install-local.sh --clean              # wipe build/ first
+  scripts/install-local.sh --no-standalone       # skip the Standalone app
+  ```
+
+- **`scripts/dist-macos.sh`** — builds a Release and packages AU, VST3 and
+  Standalone into `dist/jj-breeze-<version>-macos.zip` for distribution.
+  Signs the artefacts with `CODESIGN_IDENTITY` (defaults to `73DGAYU6A5`;
+  pass `CODESIGN_IDENTITY=` empty to skip signing).
+
+  ```sh
+  scripts/dist-macos.sh                                    # sign with the default identity
+  scripts/dist-macos.sh --clean                              # wipe build/ first
+  CODESIGN_IDENTITY= scripts/dist-macos.sh                    # skip signing
+  CODESIGN_IDENTITY="Developer ID Application: Name (TEAMID)" scripts/dist-macos.sh
+  ```
+
 ## Project layout
 
 ```
 CMakeLists.txt              JUCE plugin target (AU, VST3, Standalone)
+scripts/
+  install-local.sh           Build + install AU/VST3/Standalone locally for DAW testing
+  dist-macos.sh               Build + package AU/VST3/Standalone into a distributable zip
 Source/
   PluginProcessor.h/.cpp    Parameters (APVTS) + the per-block audio path
   PluginEditor.h/.cpp       GUI: Shift knobs, plus separate Slapback, Vibrato and Warmth sections
