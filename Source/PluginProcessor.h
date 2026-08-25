@@ -79,6 +79,16 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    // Declared before apvts so it exists in time to be handed to apvts's
+    // constructor below (member init order follows declaration order).
+    // Gives every apvts-managed parameter real undo/redo — mainly for the
+    // Standalone build, which (unlike being hosted in a DAW) has no
+    // host-level undo of its own. Editor interactions call
+    // beginNewTransaction() at the start of each logical action (a knob
+    // drag, a preset load, an A/B recall) so that whole action undoes as
+    // one step rather than every intermediate value.
+    juce::UndoManager undoManager;
+
     juce::AudioProcessorValueTreeState apvts;
 
     // A/B compare: lets the editor snapshot the full patch into slot 0
@@ -91,11 +101,44 @@ public:
     bool hasCompareSnapshotStored (int slot) const { return slot >= 0 && slot < 2 && hasCompareSnapshot[(size_t) slot]; }
     int activeCompareSlot = 0;
 
+    // Bypass: forces every section off — the untouched dry signal — without
+    // disturbing any knob value or which sections were individually on, and
+    // restores them on un-bypass. A convenience layered on top of the three
+    // section on/off parameters, not a separate DSP path or parameter of
+    // its own.
+    void setBypassed (bool shouldBeBypassed);
+    bool isBypassed() const { return bypassed; }
+    // Called by the editor when a section's on/off changes while bypassed
+    // (e.g. the user clicks a section's own toggle directly) — bypass no
+    // longer describes the current state, so just stop claiming it does,
+    // without touching any parameter.
+    void clearBypassedFlag() { bypassed = false; }
+
+    // Generic full-patch snapshot/compare, normalized (0..1) per parameter
+    // in ParamIDs::all order — used by the editor to remember what the
+    // currently-selected preset actually contains, so it can tell (and show)
+    // when the user has since tweaked something away from it.
+    std::array<float, ParamIDs::all.size()> captureNormalizedSnapshot() const;
+    bool matchesNormalizedSnapshot (const std::array<float, ParamIDs::all.size()>& snapshot) const;
+
+    // User presets: full-patch snapshots saved to disk (same XML shape as
+    // the session state), independent of the fixed 8-entry factory preset
+    // list below so the host-visible program count never changes at
+    // runtime — VST3/AU hosts generally assume that list is fixed.
+    juce::File getUserPresetsDirectory() const;
+    juce::StringArray getUserPresetNames() const;
+    void saveUserPreset (const juce::String& name);
+    bool loadUserPreset (const juce::String& name);
+    void deleteUserPreset (const juce::String& name);
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     std::array<float, ParamIDs::all.size()> compareSnapshots[2] {};
     bool hasCompareSnapshot[2] { false, false };
+
+    bool bypassed = false;
+    bool bypassSavedShiftOn = true, bypassSavedVibratoOn = false, bypassSavedWarmthOn = false;
 
     // Factory presets: a name plus a value for every ParamIDs entry, in the
     // same order createParameterLayout() adds them. Index 0 ("Default") is

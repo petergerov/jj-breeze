@@ -232,6 +232,16 @@ public:
             const auto range = apvts.getParameterRange (paramID);
             slider.setDoubleClickReturnValue (true, range.convertFrom0to1 (param->getDefaultValue()));
         }
+
+        // Group everything that happens over one drag into a single undo
+        // step, rather than every intermediate value the drag passes
+        // through — apvts.undoManager is public specifically for cases
+        // like this (see JJBreezeAudioProcessor::undoManager).
+        if (auto* um = apvts.undoManager)
+        {
+            const juce::String transactionName = caption;
+            slider.onDragStart = [um, transactionName] { um->beginNewTransaction (transactionName); };
+        }
     }
 
     void resized() override
@@ -268,12 +278,33 @@ private:
     // recalls the target slot and updates which A/B button reads as active.
     void switchCompareSlot (int targetSlot);
     void updateCompareButtonColours();
+    void updateBypassButtonColour();
+
+    // Repopulates presetBox from the factory list plus whatever's on disk
+    // in JJBreezeAudioProcessor::getUserPresetsDirectory(), then restores
+    // the correct selection. Called at startup and after any save/delete.
+    void refreshPresetBox();
+    // "Save current as..." — prompts for a name via a small modal dialog,
+    // then writes it to disk and selects it.
+    void promptAndSaveUserPreset();
+
+    // Bonus for the Standalone build, which has no host-supplied Edit menu
+    // of its own; harmless (and likely just inert) when hosted in a DAW,
+    // since EDITOR_WANTS_KEYBOARD_FOCUS is off there.
+    bool keyPressed (const juce::KeyPress& key) override;
 
     // Polls the three section-enabled parameters (so a toggle flipped by
     // the host — automation, preset recall — collapses/expands its section
-    // too, not just clicks made in this editor) and the current program
-    // (so picking a preset from the host's own menu updates presetBox too).
+    // too, not just clicks made in this editor), the current program (so
+    // picking a preset from the host's own menu updates presetBox too),
+    // whether the live patch still matches the selected preset (the
+    // "modified" indicator), and undo/redo availability.
     void timerCallback() override;
+
+    // ComboBox item IDs: factory presets use 1..getNumPrograms() (their
+    // host program index + 1); user preset items start here instead, well
+    // clear of that range, indexed into JJBreezeAudioProcessor::getUserPresetNames().
+    static constexpr int firstUserPresetItemId = 1000;
 
     JJBreezeAudioProcessor& processorRef;
     RetroLookAndFeel retroLookAndFeel;
@@ -288,11 +319,29 @@ private:
     juce::Label vibratoSectionLabel;
     juce::Label warmthSectionLabel;
 
-    // Factory-preset picker, backed by JJBreezeAudioProcessor's existing
-    // program list — previously only reachable through the host's own
-    // (often buried) preset menu.
+    // Preset picker: factory presets (JJBreezeAudioProcessor's existing
+    // program list — previously only reachable through the host's own,
+    // often buried, preset menu) plus any user presets on disk, refreshed
+    // by refreshPresetBox().
     juce::ComboBox presetBox;
+    juce::TextButton saveButton { "SAVE" }, deleteButton { "DEL" };
     int lastKnownProgram = -1;
+    // Empty when a factory preset is the active patch; the name of the
+    // active user preset otherwise — presetBox items in both ranges share
+    // one control, but only user presets are deletable and only factory
+    // presets are tracked by getCurrentProgram().
+    juce::String activeUserPresetName;
+    // What the currently-selected preset (factory or user) actually
+    // contains, captured right after loading it — compared against the live
+    // patch each timer tick to show/hide the "modified" indicator.
+    std::array<float, ParamIDs::all.size()> activePresetSnapshot {};
+
+    // Undo/redo — see JJBreezeAudioProcessor::undoManager.
+    juce::TextButton undoButton { "\xE2\x86\xB6" }, redoButton { "\xE2\x86\xB7" }; // U+21B6 / U+21B7
+
+    // Forces all three sections off — the untouched dry signal — without
+    // disturbing any knob or which sections were individually on.
+    juce::TextButton bypassButton { "BYPASS" };
 
     // A/B compare — see JJBreezeAudioProcessor::storeCompareSnapshot/recallCompareSnapshot.
     juce::TextButton compareAButton { "A" }, compareBButton { "B" };

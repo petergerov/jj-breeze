@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
@@ -5,7 +7,7 @@ JJBreezeAudioProcessor::JJBreezeAudioProcessor()
     : AudioProcessor (BusesProperties()
                            .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                            .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
+      apvts (*this, &undoManager, "PARAMETERS", createParameterLayout())
 {
     // Slot A starts out as whatever the default patch is, so the A/B
     // compare toggle in the editor has something meaningful to flip back to
@@ -464,6 +466,8 @@ void JJBreezeAudioProcessor::setCurrentProgram (int index)
     if (index < 0 || index >= getNumPrograms())
         return;
 
+    undoManager.beginNewTransaction ("Load preset: " + getProgramName (index));
+
     currentProgram = index;
     applyPreset (index);
     updateHostDisplay();
@@ -486,9 +490,113 @@ void JJBreezeAudioProcessor::recallCompareSnapshot (int slot)
     if (slot < 0 || slot > 1 || ! hasCompareSnapshot[slot])
         return;
 
+    undoManager.beginNewTransaction ("Recall compare slot " + juce::String (slot == 0 ? "A" : "B"));
+
     for (size_t i = 0; i < ParamIDs::all.size(); ++i)
         if (auto* param = apvts.getParameter (ParamIDs::all[i]))
             param->setValueNotifyingHost (compareSnapshots[slot][i]);
+}
+
+void JJBreezeAudioProcessor::setBypassed (bool shouldBeBypassed)
+{
+    if (shouldBeBypassed == bypassed)
+        return;
+
+    undoManager.beginNewTransaction (shouldBeBypassed ? "Bypass" : "Un-bypass");
+
+    auto setSectionOn = [this] (const juce::String& paramID, bool value)
+    {
+        if (auto* param = apvts.getParameter (paramID))
+            param->setValueNotifyingHost (value ? 1.0f : 0.0f);
+    };
+
+    if (shouldBeBypassed)
+    {
+        // Remember each section's current on/off state, then force
+        // everything off so the output is the untouched dry signal — a
+        // quick "hear it raw" without disturbing any knob position or
+        // which sections were individually on.
+        bypassSavedShiftOn   = apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
+        bypassSavedVibratoOn = apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
+        bypassSavedWarmthOn  = apvts.getRawParameterValue (ParamIDs::warmthOn)->load()  > 0.5f;
+        setSectionOn (ParamIDs::shiftOn,   false);
+        setSectionOn (ParamIDs::vibratoOn, false);
+        setSectionOn (ParamIDs::warmthOn,  false);
+    }
+    else
+    {
+        setSectionOn (ParamIDs::shiftOn,   bypassSavedShiftOn);
+        setSectionOn (ParamIDs::vibratoOn, bypassSavedVibratoOn);
+        setSectionOn (ParamIDs::warmthOn,  bypassSavedWarmthOn);
+    }
+
+    bypassed = shouldBeBypassed;
+}
+
+std::array<float, ParamIDs::all.size()> JJBreezeAudioProcessor::captureNormalizedSnapshot() const
+{
+    std::array<float, ParamIDs::all.size()> snapshot {};
+    for (size_t i = 0; i < ParamIDs::all.size(); ++i)
+        if (auto* param = apvts.getParameter (ParamIDs::all[i]))
+            snapshot[i] = param->getValue();
+    return snapshot;
+}
+
+bool JJBreezeAudioProcessor::matchesNormalizedSnapshot (const std::array<float, ParamIDs::all.size()>& snapshot) const
+{
+    for (size_t i = 0; i < ParamIDs::all.size(); ++i)
+        if (auto* param = apvts.getParameter (ParamIDs::all[i]))
+            if (std::abs (param->getValue() - snapshot[i]) > 0.001f)
+                return false;
+    return true;
+}
+
+juce::File JJBreezeAudioProcessor::getUserPresetsDirectory() const
+{
+    auto dir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                   .getChildFile ("Gerov").getChildFile ("jj-breeze").getChildFile ("Presets");
+    dir.createDirectory();
+    return dir;
+}
+
+juce::StringArray JJBreezeAudioProcessor::getUserPresetNames() const
+{
+    juce::StringArray names;
+    for (const auto& file : getUserPresetsDirectory().findChildFiles (juce::File::findFiles, false, "*.xml"))
+        names.add (file.getFileNameWithoutExtension());
+    names.sort (true);
+    return names;
+}
+
+void JJBreezeAudioProcessor::saveUserPreset (const juce::String& name)
+{
+    const auto file = getUserPresetsDirectory().getChildFile (juce::File::createLegalFileName (name) + ".xml");
+    if (auto state = apvts.copyState(); state.isValid())
+        if (auto xml = state.createXml())
+            xml->writeTo (file);
+}
+
+bool JJBreezeAudioProcessor::loadUserPreset (const juce::String& name)
+{
+    const auto file = getUserPresetsDirectory().getChildFile (juce::File::createLegalFileName (name) + ".xml");
+    if (! file.existsAsFile())
+        return false;
+
+    auto xml = juce::XmlDocument::parse (file);
+    if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
+        return false;
+
+    // Same replaceState() mechanism setStateInformation() already uses for
+    // full session recall — proven to correctly update every parameter
+    // (and, through it, every attached UI control) in one shot.
+    undoManager.beginNewTransaction ("Load user preset: " + name);
+    apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    return true;
+}
+
+void JJBreezeAudioProcessor::deleteUserPreset (const juce::String& name)
+{
+    getUserPresetsDirectory().getChildFile (juce::File::createLegalFileName (name) + ".xml").deleteFile();
 }
 
 void JJBreezeAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

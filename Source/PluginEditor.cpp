@@ -56,29 +56,79 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     subtitleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (subtitleLabel);
 
-    // Factory-preset picker. Previously the presets (JJBreezeAudioProcessor::
-    // getPresets()) were only reachable through the host's own preset menu,
-    // which in a host like Logic Pro is easy to miss entirely.
-    presetBox.setTooltip ("Load a factory preset — a starting point for the knobs below.");
+    // Preset picker: factory presets (JJBreezeAudioProcessor::getPresets())
+    // plus user presets saved from this editor — previously only the
+    // factory list existed, and only reachable through the host's own
+    // preset menu, which in a host like Logic Pro is easy to miss entirely.
+    presetBox.setTooltip ("Load a preset — a starting point for the knobs below.");
     presetBox.setTextWhenNothingSelected ("Preset...");
     presetBox.setColour (juce::ComboBox::backgroundColourId, ledBackground);
     presetBox.setColour (juce::ComboBox::textColourId, ledText);
     presetBox.setColour (juce::ComboBox::outlineColourId, metalDark);
     presetBox.setColour (juce::ComboBox::arrowColourId, accent);
-    for (int i = 0; i < processorRef.getNumPrograms(); ++i)
-        presetBox.addItem (processorRef.getProgramName (i), i + 1); // ComboBox item IDs are 1-based
-    presetBox.setSelectedId (processorRef.getCurrentProgram() + 1, juce::dontSendNotification);
-    lastKnownProgram = processorRef.getCurrentProgram();
     presetBox.onChange = [this]
     {
-        const auto index = presetBox.getSelectedId() - 1;
-        if (index >= 0)
+        const int id = presetBox.getSelectedId();
+
+        if (id >= firstUserPresetItemId)
         {
-            processorRef.setCurrentProgram (index);
-            lastKnownProgram = index;
+            const auto names = processorRef.getUserPresetNames();
+            const int idx = id - firstUserPresetItemId;
+            if (idx >= 0 && idx < names.size() && processorRef.loadUserPreset (names[idx]))
+            {
+                activeUserPresetName = names[idx];
+                activePresetSnapshot = processorRef.captureNormalizedSnapshot();
+                deleteButton.setEnabled (true);
+            }
+        }
+        else if (id >= 1)
+        {
+            processorRef.setCurrentProgram (id - 1);
+            lastKnownProgram = id - 1;
+            activeUserPresetName.clear();
+            activePresetSnapshot = processorRef.captureNormalizedSnapshot();
+            deleteButton.setEnabled (false);
         }
     };
+    refreshPresetBox();
     addAndMakeVisible (presetBox);
+
+    saveButton.setTooltip ("Save the current knob settings as a new user preset.");
+    saveButton.onClick = [this] { promptAndSaveUserPreset(); };
+    addAndMakeVisible (saveButton);
+
+    deleteButton.setTooltip ("Delete the selected user preset. Only enabled for user presets — factory presets can't be deleted.");
+    deleteButton.onClick = [this]
+    {
+        if (activeUserPresetName.isEmpty())
+            return;
+
+        processorRef.deleteUserPreset (activeUserPresetName);
+        activeUserPresetName.clear();
+        refreshPresetBox(); // falls back to showing the current factory program
+    };
+    addAndMakeVisible (deleteButton);
+
+    // Undo/redo — mainly useful in the Standalone build, which (unlike
+    // being hosted in a DAW) has no host-level undo of its own.
+    undoButton.setTooltip ("Undo the last change.");
+    redoButton.setTooltip ("Redo.");
+    undoButton.onClick = [this] { processorRef.undoManager.undo(); };
+    redoButton.onClick = [this] { processorRef.undoManager.redo(); };
+    addAndMakeVisible (undoButton);
+    addAndMakeVisible (redoButton);
+
+    // Bypass — forces all three sections off (the untouched dry signal)
+    // without touching any knob or which sections were individually on.
+    bypassButton.setTooltip ("Bypass all processing — output the untouched dry signal without changing any knob or section state.");
+    bypassButton.setClickingTogglesState (false);
+    bypassButton.onClick = [this]
+    {
+        processorRef.setBypassed (! processorRef.isBypassed());
+        updateBypassButtonColour();
+    };
+    addAndMakeVisible (bypassButton);
+    updateBypassButtonColour();
 
     // A/B compare — see JJBreezeAudioProcessor::storeCompareSnapshot/recallCompareSnapshot.
     compareAButton.setTooltip ("Compare slot A. Switching away stores your current tweaks here first.");
@@ -129,18 +179,23 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     // just a click here — poll and relayout so the collapse always matches.
     startTimerHz (15);
 
+    // Lets keyPressed() below receive Cmd+Z/Cmd+Shift+Z once this editor has
+    // focus — mainly useful in the Standalone build, which has no
+    // host-supplied Edit menu of its own.
+    setWantsKeyboardFocus (true);
+
     // Resizable (host-driven, plus a drag corner) rather than fixed, so the
     // UI isn't stuck too small on a hi-DPI/scaled display. Locked to the
     // design's own aspect ratio so knobs, panels and text all scale
     // together instead of the layout stretching oddly in one direction.
-    constexpr int defaultWidth = 480, defaultHeight = 660;
+    constexpr int defaultWidth = 480, defaultHeight = 680;
     setResizable (true, true);
     setResizeLimits (defaultWidth * 3 / 4, defaultHeight * 3 / 4, defaultWidth * 2, defaultHeight * 2);
     getConstrainer()->setFixedAspectRatio ((double) defaultWidth / (double) defaultHeight);
     // Shrunk from 760 (which fit Shift, Slapback, Vibrato and Warmth) now
     // that Slapback is gone — recomputed for three sections at the same
     // per-row knob size as before, not just an arbitrary guess. Height grew
-    // by the preset/compare row added to the header.
+    // by the preset/save/delete and undo/bypass/A-B rows added to the header.
     setSize (defaultWidth, defaultHeight);
 }
 
@@ -192,6 +247,98 @@ void JJBreezeAudioProcessorEditor::updateCompareButtonColours()
     compareBButton.setColour (juce::TextButton::textColourOffId, onA ? textMuted : accent);
 }
 
+void JJBreezeAudioProcessorEditor::updateBypassButtonColour()
+{
+    const bool on = processorRef.isBypassed();
+    bypassButton.setColour (juce::TextButton::buttonColourId, on ? accentDim : metalDark);
+    bypassButton.setColour (juce::TextButton::textColourOffId, on ? accent : textMuted);
+}
+
+void JJBreezeAudioProcessorEditor::refreshPresetBox()
+{
+    presetBox.clear (juce::dontSendNotification);
+
+    presetBox.addSectionHeading ("FACTORY");
+    for (int i = 0; i < processorRef.getNumPrograms(); ++i)
+        presetBox.addItem (processorRef.getProgramName (i), i + 1); // ComboBox item IDs are 1-based
+
+    const auto userPresetNames = processorRef.getUserPresetNames();
+    if (! userPresetNames.isEmpty())
+    {
+        presetBox.addSeparator();
+        presetBox.addSectionHeading ("USER");
+        for (int i = 0; i < userPresetNames.size(); ++i)
+            presetBox.addItem (userPresetNames[i], firstUserPresetItemId + i);
+    }
+
+    if (activeUserPresetName.isNotEmpty())
+    {
+        const int idx = userPresetNames.indexOf (activeUserPresetName);
+        if (idx >= 0)
+            presetBox.setSelectedId (firstUserPresetItemId + idx, juce::dontSendNotification);
+        else
+            activeUserPresetName.clear(); // it was just deleted — nothing left to select under that name
+    }
+
+    if (activeUserPresetName.isEmpty())
+    {
+        lastKnownProgram = processorRef.getCurrentProgram();
+        presetBox.setSelectedId (lastKnownProgram + 1, juce::dontSendNotification);
+        deleteButton.setEnabled (false);
+    }
+    else
+    {
+        deleteButton.setEnabled (true);
+    }
+
+    activePresetSnapshot = processorRef.captureNormalizedSnapshot();
+}
+
+void JJBreezeAudioProcessorEditor::promptAndSaveUserPreset()
+{
+    auto* aw = new juce::AlertWindow ("Save Preset", "Name this preset:", juce::MessageBoxIconType::NoIcon);
+    aw->addTextEditor ("name", activeUserPresetName);
+    aw->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    // deleteWhenDismissed is left false: enterModalState would delete aw
+    // *before* invoking the callback in that mode, which would make reading
+    // its text editor below a use-after-free. Instead the callback takes
+    // ownership itself and reads it first.
+    aw->enterModalState (true, juce::ModalCallbackFunction::create ([this, aw] (int result)
+    {
+        std::unique_ptr<juce::AlertWindow> ownedWindow (aw);
+
+        if (result != 1)
+            return;
+
+        const auto name = ownedWindow->getTextEditorContents ("name").trim();
+        if (name.isEmpty())
+            return;
+
+        processorRef.saveUserPreset (name);
+        activeUserPresetName = name;
+        refreshPresetBox();
+    }));
+}
+
+bool JJBreezeAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress ('z', juce::ModifierKeys::commandModifier, 0))
+    {
+        processorRef.undoManager.undo();
+        return true;
+    }
+
+    if (key == juce::KeyPress ('z', juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier, 0))
+    {
+        processorRef.undoManager.redo();
+        return true;
+    }
+
+    return false;
+}
+
 void JJBreezeAudioProcessorEditor::timerCallback()
 {
     const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
@@ -207,16 +354,39 @@ void JJBreezeAudioProcessorEditor::timerCallback()
         repaint();
     }
 
+    // A section coming back on while we still think we're bypassed means
+    // it was flipped directly (a click on its own toggle, or host
+    // automation) — bypass no longer describes the actual state, so stop
+    // showing it as active rather than let the LED lie.
+    if (processorRef.isBypassed() && (shiftOn || vibratoOn || warmthOn))
+    {
+        processorRef.clearBypassedFlag();
+        updateBypassButtonColour();
+    }
+
     // The current program can also change from outside this editor — the
-    // host's own preset menu, or a saved session reloading — keep the
-    // picker in sync without re-triggering onChange (which would otherwise
-    // just re-apply the same preset).
+    // host's own preset menu, automation, or a saved session reloading —
+    // keep the picker in sync without re-triggering onChange (which would
+    // otherwise just re-apply the same preset). An external program change
+    // always means a factory preset is now active, even if a user preset
+    // was showing a moment ago.
     const int currentProgram = processorRef.getCurrentProgram();
     if (currentProgram != lastKnownProgram)
     {
         lastKnownProgram = currentProgram;
+        activeUserPresetName.clear();
         presetBox.setSelectedId (currentProgram + 1, juce::dontSendNotification);
+        activePresetSnapshot = processorRef.captureNormalizedSnapshot();
+        deleteButton.setEnabled (false);
     }
+
+    // "Modified" indicator: dim the preset picker's text once the live
+    // patch no longer matches what the selected preset actually contains.
+    const bool modified = ! processorRef.matchesNormalizedSnapshot (activePresetSnapshot);
+    presetBox.setColour (juce::ComboBox::textColourId, modified ? textMuted : ledText);
+
+    undoButton.setEnabled (processorRef.undoManager.canUndo());
+    redoButton.setEnabled (processorRef.undoManager.canRedo());
 }
 
 void JJBreezeAudioProcessorEditor::drawScrew (juce::Graphics& g, juce::Point<float> centre) const
@@ -233,7 +403,7 @@ void JJBreezeAudioProcessorEditor::drawScrew (juce::Graphics& g, juce::Point<flo
 }
 
 // Shared with resized() so panels, rules and knob rows all land in the same place.
-static constexpr int headerHeight = 108; // title + subtitle + preset/compare row
+static constexpr int headerHeight = 128; // title + subtitle + preset/save/delete row + undo/bypass/A-B row
 static constexpr int outerPadding = 20; // horizontal margin
 static constexpr int topPadding = 12;
 static constexpr int bottomPadding = 36; // extra clearance so the bottom corner screws stay visible
@@ -314,16 +484,30 @@ void JJBreezeAudioProcessorEditor::resized()
     auto header = area.removeFromTop (headerHeight).reduced (18, 10);
     titleLabel.setBounds (header.removeFromTop (26));
     subtitleLabel.setBounds (header.removeFromTop (16));
-    header.removeFromTop (8); // gap before the preset/compare row
+    header.removeFromTop (8); // gap before the preset row
 
-    // Preset picker (left, flexible width) and A/B compare buttons (right,
-    // fixed width) share the header's last row.
-    auto controlsRow = header;
-    compareBButton.setBounds (controlsRow.removeFromRight (30));
-    controlsRow.removeFromRight (4);
-    compareAButton.setBounds (controlsRow.removeFromRight (30));
-    controlsRow.removeFromRight (10);
-    presetBox.setBounds (controlsRow);
+    // Preset picker (left, flexible width) plus Save/Delete (right, fixed
+    // width) share one row.
+    auto presetRow = header.removeFromTop (26);
+    deleteButton.setBounds (presetRow.removeFromRight (34));
+    presetRow.removeFromRight (4);
+    saveButton.setBounds (presetRow.removeFromRight (46));
+    presetRow.removeFromRight (8);
+    presetBox.setBounds (presetRow);
+
+    header.removeFromTop (6); // gap before the actions row
+
+    // Undo/redo (left) and bypass + A/B compare (right) share the last row.
+    auto actionsRow = header;
+    undoButton.setBounds (actionsRow.removeFromLeft (30));
+    actionsRow.removeFromLeft (4);
+    redoButton.setBounds (actionsRow.removeFromLeft (30));
+
+    compareBButton.setBounds (actionsRow.removeFromRight (28));
+    actionsRow.removeFromRight (4);
+    compareAButton.setBounds (actionsRow.removeFromRight (28));
+    actionsRow.removeFromRight (10);
+    bypassButton.setBounds (actionsRow.removeFromRight (64));
 
     area.removeFromTop (8); // gap before the knob sections
     area.removeFromLeft (outerPadding);

@@ -121,17 +121,36 @@ delay values you want directly.
 Each of the three sections (Shift, Vibrato, Warmth) also has its own on/off
 switch, independent of its Mix knob — see "How it works" above.
 
-The editor's header carries a few more workflow controls: a **preset**
-picker (see Factory presets below), an **A/B** compare toggle for quickly
-flipping between two variations of a patch while dialing it in (switching
-away from a slot stores whatever you last tweaked there, and a slot you
-haven't touched yet starts as a copy of the other one, so the first switch
-is silent), and the window itself is resizable (drag the bottom-right
-corner) with a fixed aspect ratio, rather than a fixed size. Every knob
-resets to its default on double-click, and hovering any knob, toggle, the
-preset picker or an A/B button shows a tooltip explaining what it does —
-most usefully on Focus, whose crossover behavior (everything below it stays
-untouched — see "How it works" above) isn't obvious from the knob alone.
+The editor's header carries a few more workflow controls, top to bottom:
+
+- A **preset** picker (see Factory presets below) covering both the eight
+  built-in factory presets and any **user presets** you save. **SAVE**
+  prompts for a name and writes the current knob settings to disk
+  (`~/Library/Application Support/Gerov/jj-breeze/Presets`, independent of
+  the fixed factory list, so the host-visible preset count never changes);
+  **DEL** removes the selected user preset (disabled for factory presets,
+  which can't be deleted). The picker's text dims once you've tweaked
+  something away from the selected preset, so it never silently claims to
+  still show what's actually loaded.
+- **Undo/redo** (the ↶/↷ buttons, or Cmd+Z/Cmd+Shift+Z once the editor has
+  focus) — covers every knob, toggle, preset load and A/B recall, grouped
+  so one knob drag or one preset load undoes as a single step. Mainly
+  useful in the Standalone build, which — unlike being hosted in a DAW —
+  has no host-level undo of its own.
+- **BYPASS** forces all three sections off — the untouched dry signal —
+  without touching any knob value or which sections were individually on,
+  and restores them on un-bypass.
+- An **A/B** compare toggle for quickly flipping between two variations of
+  a patch while dialing it in (switching away from a slot stores whatever
+  you last tweaked there, and a slot you haven't touched yet starts as a
+  copy of the other one, so the first switch is silent).
+
+The window itself is resizable (drag the bottom-right corner) with a fixed
+aspect ratio, rather than a fixed size. Every knob resets to its default on
+double-click, and hovering any knob, toggle, or header control shows a
+tooltip explaining what it does — most usefully on Focus, whose crossover
+behavior (everything below it stays untouched — see "How it works" above)
+isn't obvious from the knob alone.
 
 ## Factory presets
 
