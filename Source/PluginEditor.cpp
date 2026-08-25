@@ -43,20 +43,12 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
 {
     setLookAndFeel (&retroLookAndFeel);
 
-    headerMark = juce::ImageCache::getFromMemory (BinaryData::jjbreezemark_png, BinaryData::jjbreezemark_pngSize);
-
     titleLabel.setText ("J.J.BREEZE", juce::dontSendNotification);
     titleLabel.setFont (juce::Font (juce::FontOptions ("Avenir Next Condensed", 24.0f, juce::Font::bold))
                              .withExtraKerningFactor (0.05f));
     titleLabel.setColour (juce::Label::textColourId, textLight);
     titleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (titleLabel);
-
-    subtitleLabel.setText ("STEREO WIDENER - VIBRATO - WARMTH", juce::dontSendNotification);
-    subtitleLabel.setFont (juce::Font (juce::FontOptions ("Menlo", 10.5f, juce::Font::plain)).withExtraKerningFactor (0.04f));
-    subtitleLabel.setColour (juce::Label::textColourId, textMuted);
-    subtitleLabel.setJustificationType (juce::Justification::centred);
-    addAndMakeVisible (subtitleLabel);
 
     // Preset picker: factory presets (JJBreezeAudioProcessor::getPresets())
     // plus user presets saved from this editor - previously only the
@@ -190,7 +182,7 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     // UI isn't stuck too small on a hi-DPI/scaled display. Locked to the
     // design's own aspect ratio so knobs, panels and text all scale
     // together instead of the layout stretching oddly in one direction.
-    constexpr int defaultWidth = 480, defaultHeight = 680;
+    constexpr int defaultWidth = 480, defaultHeight = 664;
     setResizable (true, true);
     setResizeLimits (defaultWidth * 3 / 4, defaultHeight * 3 / 4, defaultWidth * 2, defaultHeight * 2);
     getConstrainer()->setFixedAspectRatio ((double) defaultWidth / (double) defaultHeight);
@@ -199,15 +191,6 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     // per-row knob size as before, not just an arbitrary guess. Height grew
     // by the preset/save/delete and undo/bypass/A-B rows added to the header.
     setSize (defaultWidth, defaultHeight);
-
-    // TEMP PREVIEW - remove before shipping.
-    {
-        auto img = createComponentSnapshot (getLocalBounds().removeFromTop (140), true, 2.0f);
-        juce::PNGImageFormat png;
-        juce::File dir ("/private/tmp/claude-501/-Users-pgerov-projects-github-jj-breeze/09f4f644-f936-44da-8c36-45c95ea6c529/scratchpad");
-        if (std::unique_ptr<juce::FileOutputStream> out { dir.getChildFile ("header_preview.png").createOutputStream() })
-            png.writeImageToStream (img, *out);
-    }
 }
 
 JJBreezeAudioProcessorEditor::~JJBreezeAudioProcessorEditor()
@@ -414,7 +397,7 @@ void JJBreezeAudioProcessorEditor::drawScrew (juce::Graphics& g, juce::Point<flo
 }
 
 // Shared with resized() so panels, rules and knob rows all land in the same place.
-static constexpr int headerHeight = 128; // title + subtitle + preset/save/delete row + undo/bypass/A-B row
+static constexpr int headerHeight = 112; // title + preset/save/delete row + undo/bypass/A-B row
 static constexpr int outerPadding = 20; // horizontal margin
 static constexpr int topPadding = 12;
 static constexpr int bottomPadding = 36; // extra clearance so the bottom corner screws stay visible
@@ -453,25 +436,6 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (metalLight.withAlpha (0.15f));
     g.drawHorizontalLine ((int) header.getBottom() - 1, 0.0f, bounds.getWidth());
 
-    // A small, subtle mark beside the title - circular-clipped (the source
-    // crop is square) and faint enough to read as an etched badge on the
-    // chassis rather than a logo competing with the corner screw or the
-    // title text next to it.
-    if (headerMark.isValid())
-    {
-        constexpr float markDiameter = 48.0f;
-        const auto markArea = juce::Rectangle<float> (markDiameter, markDiameter)
-                                   .withPosition (header.getX() + 32.0f, header.getY() + 6.0f);
-
-        juce::Path clip;
-        clip.addEllipse (markArea);
-        juce::Graphics::ScopedSaveState save (g);
-        g.reduceClipRegion (clip);
-        g.setOpacity (0.55f);
-        g.drawImage (headerMark, markArea, juce::RectanglePlacement::centred);
-        g.setOpacity (1.0f);
-    }
-
     // Section panels - recessed metal cards that visually group each knob
     // row (or, when the section's toggle is off, just its collapsed
     // header bar).
@@ -508,12 +472,11 @@ void JJBreezeAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
 
-    // Full header width for the centred title/subtitle - the power LED is
-    // drawn separately (in paint()) off to the left and doesn't need room
-    // carved out of the text layout.
+    // Full header width for the centred title - the power LED is drawn
+    // separately (in paint()) off to the left and doesn't need room carved
+    // out of the text layout.
     auto header = area.removeFromTop (headerHeight).reduced (18, 10);
     titleLabel.setBounds (header.removeFromTop (26));
-    subtitleLabel.setBounds (header.removeFromTop (16));
     header.removeFromTop (8); // gap before the preset row
 
     // Preset picker (left, flexible width) plus Save/Delete (right, fixed

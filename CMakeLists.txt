@@ -37,13 +37,6 @@ target_sources(jj_breeze PRIVATE
     Source/PluginEditor.cpp
 )
 
-# The small circular mark drawn subtly in the editor header — cropped from
-# images/47-warmth-icon.png (that file also bakes in "J.J.BREEZE" text,
-# redundant next to the header's own title label, hence the separate crop).
-juce_add_binary_data(jj_breeze_BinaryData
-    SOURCES
-        images/jjbreeze-mark.png
-)
 
 target_compile_definitions(jj_breeze PUBLIC
     JUCE_WEB_BROWSER=0
@@ -56,7 +49,6 @@ target_link_libraries(jj_breeze
     PRIVATE
         juce::juce_audio_utils
         juce::juce_dsp
-        jj_breeze_BinaryData
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags

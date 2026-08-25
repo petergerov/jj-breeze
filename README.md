@@ -145,12 +145,6 @@ The editor's header carries a few more workflow controls, top to bottom:
   you last tweaked there, and a slot you haven't touched yet starts as a
   copy of the other one, so the first switch is silent).
 
-A small circular mark sits faintly next to the title — cropped from
-`images/47-warmth-icon.png` (that file also bakes in "J.J.BREEZE" text,
-redundant next to the header's own title label, hence the separate crop in
-`images/jjbreeze-mark.png`), drawn at low opacity so it reads as an etched
-badge on the chassis rather than a logo competing with the text.
-
 The window itself is resizable (drag the bottom-right corner) with a fixed
 aspect ratio, rather than a fixed size. Every knob resets to its default on
 double-click, and hovering any knob, toggle, or header control shows a
