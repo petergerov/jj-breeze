@@ -1,0 +1,81 @@
+name: Package Windows installer (.exe)
+
+# Runs scripts/dist-windows.ps1 to produce the same Inno Setup installer that
+# script builds locally, and uploads it as a workflow artifact.
+#
+# Signing is optional and degrades gracefully: with no certificate secrets
+# configured this still produces a working installer, just an unsigned one
+# that SmartScreen will warn about on other machines. For a shippable build,
+# add these repository secrets:
+#
+#   WINDOWS_CERT_PFX_B64   base64 of an Authenticode code-signing .pfx
+#   WINDOWS_CERT_PASSWORD  the password that .pfx was exported with
+#
+# (on Windows: certutil -encode cert.pfx cert.b64, then strip the header and
+# footer lines; on macOS/Linux: base64 -i cert.pfx)
+#
+# There is no notarization equivalent here — the Windows analogue is simply an
+# Authenticode signature, ideally from an EV certificate, which is what builds
+# SmartScreen reputation.
+on:
+  workflow_dispatch:
+
+jobs:
+  package:
+    # Same pin and same reason as build-windows.yml: windows-latest now ships
+    # Visual Studio 2026, which the generator in dist-windows.ps1 doesn't
+    # match. Inno Setup is preinstalled on this image too.
+    runs-on: windows-2022
+
+    env:
+      # Deliberately *_B64, not WINDOWS_CERT_PFX: dist-windows.ps1 reads that
+      # name as a filesystem path, and leaking base64 content into it would
+      # make the script fail with a confusing "certificate not found".
+      WINDOWS_CERT_PFX_B64: ${{ secrets.WINDOWS_CERT_PFX_B64 }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JUCE itself is fetched by CMake (FetchContent, see CMakeLists.txt);
+      # caching that checkout is the single biggest speedup available here,
+      # since it's a full framework clone every time otherwise.
+      - name: Cache JUCE checkout
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/juce-src
+          key: juce-src-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      # signtool wants a file on disk, so the secret is materialised into the
+      # runner's temp dir (outside the workspace, so it can't be swept into the
+      # uploaded artifact) for the life of the job only.
+      - name: Decode signing certificate
+        if: env.WINDOWS_CERT_PFX_B64 != ''
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'signing.pfx'
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERT_PFX_B64))
+          "SIGNING_PFX=$pfxPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          if ($env:SIGNING_PFX) {
+              Write-Host "==> Building signed installer"
+              scripts\dist-windows.ps1 -CertPath $env:SIGNING_PFX -CertPassword $env:WINDOWS_CERT_PASSWORD
+          } else {
+              Write-Host "==> No certificate secrets configured, building an unsigned installer"
+              scripts\dist-windows.ps1
+          }
+
+      - name: Remove signing certificate
+        if: always() && env.SIGNING_PFX != ''
+        shell: pwsh
+        run: Remove-Item -Force -ErrorAction SilentlyContinue $env:SIGNING_PFX
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: jj-breeze-windows-installer
+          path: dist/*.exe
+          if-no-files-found: error

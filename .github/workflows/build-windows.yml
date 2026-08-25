@@ -1,0 +1,69 @@
+name: Build Windows
+
+# JUCE's CMake API automatically drops plugin formats that aren't supported
+# on the current platform, so this builds whatever's left of the FORMATS
+# list in CMakeLists.txt on Windows: VST3 and Standalone (AU is Apple-only
+# and never applies here).
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Pinned to windows-2022, NOT windows-latest: between 2026-06-08 and
+    # 2026-06-15 GitHub migrated the windows-latest / windows-2025 labels to a
+    # Windows Server 2025 image carrying Visual Studio 2026 (v18) instead of
+    # 2022 (v17), which is why the "Visual Studio 17 2022" generator below
+    # stopped resolving ("could not find any instance of Visual Studio").
+    # GitHub's own guidance for anyone still needing VS 2022 is to move to this
+    # image. See actions/runner-images#14017.
+    #
+    # Moving to windows-latest later means bumping the generator to
+    # "Visual Studio 18 2026" as well — and checking that the CMake on PATH is
+    # >= 4.1, since older CMake doesn't know that generator name at all.
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The artefact filenames follow PRODUCT_NAME in CMakeLists.txt, not the
+      # repo or CMake target name — read it here (as scripts/*.sh do) rather
+      # than hardcoding "jj-breeze", so a rename there can't silently leave
+      # the upload steps below pointing at a path that no longer exists.
+      - name: Read PRODUCT_NAME from CMakeLists.txt
+        shell: bash
+        run: |
+          product_name="$(grep -Eo 'PRODUCT_NAME "[^"]*"' CMakeLists.txt | sed -E 's/PRODUCT_NAME "(.*)"/\1/')"
+          if [[ -z "$product_name" ]]; then
+              echo "error: could not determine PRODUCT_NAME from CMakeLists.txt" >&2
+              exit 1
+          fi
+          echo "PRODUCT_NAME=$product_name" >> "$GITHUB_ENV"
+
+      # JUCE itself is fetched by CMake (FetchContent, see CMakeLists.txt);
+      # caching that checkout is the single biggest speedup available here,
+      # since it's a full framework clone every time otherwise.
+      - name: Cache JUCE checkout
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/juce-src
+          key: juce-src-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DJJ_BREEZE_COPY_PLUGIN_AFTER_BUILD=OFF
+
+      - name: Build (Release)
+        run: cmake --build build --config Release --parallel
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: jj-breeze-vst3-windows
+          path: build/jj_breeze_artefacts/Release/VST3/${{ env.PRODUCT_NAME }}.vst3
+          if-no-files-found: error
+
+      - name: Upload Standalone
+        uses: actions/upload-artifact@v4
+        with:
+          name: jj-breeze-standalone-windows
+          path: build/jj_breeze_artefacts/Release/Standalone/${{ env.PRODUCT_NAME }}.exe
+          if-no-files-found: error
