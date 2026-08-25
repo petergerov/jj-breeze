@@ -1,6 +1,7 @@
 build/
 build-*/
 _deps/
+dist/
 .DS_Store
 *.xcuserstate
 /.idea/
