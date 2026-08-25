@@ -20,6 +20,10 @@ namespace GearPalette
     static const juce::Colour textMuted      (0xff8b8e94);
     static const juce::Colour ledBackground  (0xff0e0c0a);
     static const juce::Colour ledText        (0xffff9d4d);
+    static const juce::Colour meterFace      (0xfff2ead2);
+    static const juce::Colour meterFaceEdge  (0xffd9cfae);
+    static const juce::Colour meterInk       (0xff2a2620);
+    static const juce::Colour meterRed       (0xffb23b2e);
 }
 
 /** Analog-gear look for rotary knobs: a knurled brushed-metal cap that
@@ -122,6 +126,94 @@ public:
     }
 };
 
+/** A hardware-style VU meter: ivory dial face in a chrome bezel, a printed
+    dB scale with a red zone above 0, and a black needle that swings on a
+    timer with VU-like ballistics — reads the processor's live output peak,
+    like the meter on an LA-2A/1176-style compressor. */
+class VUMeter : public juce::Component, private juce::Timer
+{
+public:
+    explicit VUMeter (std::atomic<float>& levelSource) : level (levelSource)
+    {
+        startTimerHz (30);
+    }
+
+    ~VUMeter() override { stopTimer(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        using namespace GearPalette;
+
+        auto bounds = getLocalBounds().toFloat();
+
+        juce::ColourGradient bezelGrad (metalLight, bounds.getX(), bounds.getY(),
+                                         metalDark, bounds.getRight(), bounds.getBottom(), false);
+        g.setGradientFill (bezelGrad);
+        g.fillRoundedRectangle (bounds, 6.0f);
+
+        auto face = bounds.reduced (5.0f);
+        juce::ColourGradient faceGrad (meterFace, face.getX(), face.getY(),
+                                        meterFaceEdge, face.getRight(), face.getBottom(), false);
+        g.setGradientFill (faceGrad);
+        g.fillRoundedRectangle (face, 3.0f);
+
+        constexpr float minDb = -20.0f, maxDb = 3.0f;
+        constexpr float minAngle = -0.62f, maxAngle = 0.62f; // radians either side of vertical
+        auto angleForDb = [] (float db)
+        {
+            const float t = juce::jlimit (0.0f, 1.0f, (db - minDb) / (maxDb - minDb));
+            return minAngle + t * (maxAngle - minAngle);
+        };
+
+        const auto pivot = juce::Point<float> (face.getCentreX(), face.getBottom() + face.getHeight() * 0.55f);
+        const float needleLength = face.getHeight() * 1.5f;
+
+        {
+            juce::Graphics::ScopedSaveState save (g);
+            g.reduceClipRegion (face.getSmallestIntegerContainer());
+
+            for (const float db : { -20.0f, -10.0f, -5.0f, -3.0f, -1.0f, 0.0f, 1.0f, 3.0f })
+            {
+                const auto a = angleForDb (db);
+                const bool major = (db == -20.0f || db == -10.0f || db == 0.0f || db == 3.0f);
+                const juce::Point<float> dir (std::sin (a), -std::cos (a));
+                const auto tickOuter = pivot + dir * (needleLength * 0.98f);
+                const auto tickInner = pivot + dir * (needleLength * (major ? 0.84f : 0.90f));
+                g.setColour (db > 0.0f ? meterRed : meterInk.withAlpha (major ? 0.85f : 0.5f));
+                g.drawLine ({ tickInner, tickOuter }, major ? 1.6f : 1.0f);
+            }
+
+            const auto needleAngle = angleForDb (smoothedDb);
+            const juce::Point<float> needleDir (std::sin (needleAngle), -std::cos (needleAngle));
+            g.setColour (meterInk);
+            g.drawLine ({ pivot, pivot + needleDir * (needleLength * 0.95f) }, 1.6f);
+        }
+
+        g.setColour (metalDark);
+        g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre (pivot));
+
+        g.setColour (meterInk.withAlpha (0.65f));
+        g.setFont (juce::Font (juce::FontOptions (9.0f, juce::Font::bold)).withExtraKerningFactor (0.12f));
+        g.drawText ("OUTPUT", face.withTop (face.getBottom() - 13.0f).toNearestInt(), juce::Justification::centred);
+
+        g.setColour (chassisBottom);
+        g.drawRoundedRectangle (bounds, 6.0f, 1.2f);
+    }
+
+private:
+    void timerCallback() override
+    {
+        const float raw = level.load (std::memory_order_relaxed);
+        const float db = juce::Decibels::gainToDecibels (raw, -60.0f);
+        const float target = juce::jlimit (-20.0f, 3.0f, db);
+        smoothedDb += (target - smoothedDb) * 0.35f; // ~VU-like ballistics at 30Hz
+        repaint();
+    }
+
+    std::atomic<float>& level;
+    float smoothedDb = -20.0f;
+};
+
 /** A rotary slider with a caption underneath and an amber LED-style
     numeric readout — the plugin's whole UI is a handful of these plus
     section groupings. */
@@ -179,6 +271,8 @@ private:
 
     juce::Image portholeImage;
     juce::Rectangle<int> portholeBounds;
+    VUMeter vuMeter;
+    juce::Rectangle<int> meterPanelBounds;
 
     juce::Label titleLabel;
     juce::Label subtitleLabel;

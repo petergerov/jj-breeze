@@ -59,6 +59,11 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
+    // Post-processing output peak (linear, 0..~1+), updated once per block
+    // on the audio thread and read by the editor's VU meter on a timer —
+    // relaxed ordering is fine, it's a display value, not a control signal.
+    std::atomic<float> outputLevel { 0.0f };
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 

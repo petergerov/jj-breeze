@@ -6,6 +6,7 @@ using namespace GearPalette;
 JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processorRef (p),
+      vuMeter (p.outputLevel),
       pitchLKnob (p.apvts, ParamIDs::pitchL, "PITCH L"),
       pitchRKnob (p.apvts, ParamIDs::pitchR, "PITCH R"),
       delayLKnob (p.apvts, ParamIDs::delayL, "DELAY L"),
@@ -36,6 +37,8 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     subtitleLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (subtitleLabel);
 
+    addAndMakeVisible (vuMeter);
+
     addAndMakeVisible (pitchLKnob);
     addAndMakeVisible (pitchRKnob);
     addAndMakeVisible (delayLKnob);
@@ -55,7 +58,7 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     addAndMakeVisible (vibratoMixKnob);
 
     setResizable (false, false);
-    setSize (480, 640);
+    setSize (480, 720);
 }
 
 JJBreezeAudioProcessorEditor::~JJBreezeAudioProcessorEditor()
@@ -86,7 +89,8 @@ void JJBreezeAudioProcessorEditor::drawScrew (juce::Graphics& g, juce::Point<flo
 }
 
 // Shared with resized() so panels, rules and knob rows all land in the same place.
-static constexpr int headerHeight = 76;
+static constexpr int headerHeight = 60;
+static constexpr int meterStripHeight = 110;
 static constexpr int outerPadding = 20; // horizontal margin
 static constexpr int topBottomPadding = 12;
 static constexpr int sectionLabelHeight = 22;
@@ -128,6 +132,21 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillEllipse (juce::Rectangle<float> (14.0f, 14.0f).withCentre (ledCentre));
     g.setColour (accent);
     g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (ledCentre));
+
+    // The meter strip — a recessed metal card holding the VU meter and the
+    // porthole, styled after the metering section on an LA-2A/1176-style
+    // hardware compressor.
+    {
+        auto mp = meterPanelBounds.toFloat();
+        g.setColour (chassisBottom.withAlpha (0.6f));
+        g.fillRoundedRectangle (mp.translated (0.0f, 2.0f), 8.0f);
+        g.setColour (panelFill);
+        g.fillRoundedRectangle (mp, 8.0f);
+        g.setColour (chassisBottom.withAlpha (0.9f));
+        g.drawRoundedRectangle (mp, 8.0f, 1.0f);
+        g.setColour (metalLight.withAlpha (0.1f));
+        g.drawLine (mp.getX() + 10.0f, mp.getY() + 1.0f, mp.getRight() - 10.0f, mp.getY() + 1.0f, 1.0f);
+    }
 
     // The porthole — a metal-bezelled viewport onto vinyl.png, like a small
     // maker's plate riveted onto a vintage amp, dimmed to match the chassis.
@@ -189,14 +208,19 @@ void JJBreezeAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
 
-    auto header = area.removeFromTop (headerHeight).reduced (18, 10);
+    auto header = area.removeFromTop (headerHeight).reduced (18, 8);
     header.removeFromLeft (18); // room for the power LED
-    constexpr int portholeSize = 48;
-    portholeBounds = header.removeFromRight (portholeSize).withSizeKeepingCentre (portholeSize, portholeSize);
-    header.removeFromRight (14); // gap between title block and porthole
-
-    titleLabel.setBounds (header.removeFromTop (30));
+    titleLabel.setBounds (header.removeFromTop (26));
     subtitleLabel.setBounds (header);
+
+    area.removeFromTop (6); // gap before the meter strip
+    meterPanelBounds = area.removeFromTop (meterStripHeight).reduced (outerPadding, 0);
+    auto meterInner = meterPanelBounds.reduced (14, 14);
+    constexpr int portholeSize = 62;
+    portholeBounds = meterInner.removeFromRight (portholeSize).withSizeKeepingCentre (portholeSize, portholeSize);
+    meterInner.removeFromRight (16); // gap between meter and porthole
+    vuMeter.setBounds (meterInner);
+    area.removeFromTop (10); // gap before the knob sections
 
     area.reduce (outerPadding, topBottomPadding);
 
