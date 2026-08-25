@@ -403,10 +403,10 @@ juce::AudioProcessorEditor* JJBreezeAudioProcessor::createEditor()
     return new JJBreezeAudioProcessorEditor (*this);
 }
 
-const std::array<JJBreezeAudioProcessor::Preset, 7>& JJBreezeAudioProcessor::getPresets()
+const std::array<JJBreezeAudioProcessor::Preset, 8>& JJBreezeAudioProcessor::getPresets()
 {
     // pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix, vibratoRate, vibratoDepth, vibratoMix, dropAmountL, dropAmountR, dropMix, warmthTone, warmthDrive, warmthBody, warmthMix, shiftOn, slapOn, vibratoOn, dropOn, warmthOn
-    static const std::array<Preset, 7> presets { {
+    static const std::array<Preset, 8> presets { {
         { "Default",       12.0f, -12.0f, 15.0f, 15.0f, 150.0f, 50.0f, 110.0f, 15.0f,  0.0f, 1.2f, 3.0f,  0.0f, -3.0f, -3.0f, 0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  false, false, false, false },
 
         // A laid-back, intimate vocal in the JJ Cale direction: the width
@@ -427,21 +427,37 @@ const std::array<JJBreezeAudioProcessor::Preset, 7>& JJBreezeAudioProcessor::get
         // "Cajun Moon" character here.
         { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, -3.0f, -3.0f, 0.0f, 2800.0f, 25.0f, 0.0f, 70.0f, false, false, true, false, true },
 
-        // "JJ Dark Vocal": built by comparing two takes of the same
-        // performance (example/cajunmoon_vocal_vocal_1.mp3, the dark one,
-        // vs _vocal_2.mp3, the normal one). Unlike the Cajun Moon analysis
-        // above, overall top-end rolloff was nearly identical between the
-        // two (~-6.2 dB/oct either way) — the dark take's defining trait
-        // here was instead (1) a fundamental pitch ~3 semitones lower
-        // (measured median F0 160Hz vs 193Hz) and (2) far more low-mid
-        // "chest" body: its 80-160Hz band sat only ~3dB below its spectral
-        // peak, vs ~16dB down in the normal take. So Drop does the actual
-        // pitch-down (-3 semitones, full mix, ahead of everything else in
-        // the chain), Warmth's new Body control restores the chest
-        // fullness a pitch-down alone doesn't add, and width/slapback stay
-        // off with the same light Cajun-Moon-style vibrato as a finishing
-        // touch.
+        // "JJ Dark Vocal": originally built by comparing two takes of the
+        // same performance (example/cajunmoon_vocal_vocal_1.mp3 vs
+        // _vocal_2.mp3) — note the file/character mapping below was later
+        // corrected (vocal_1 is the *normal* take, vocal_2 the *processed*
+        // one — see "JJ Dark Vocal (Up)" below, which targets vocal_2's
+        // measured direction literally). This preset predates that
+        // correction and pitches down rather than up; kept as-is (a
+        // deliberately different, deeper take on "dark" — not a literal
+        // vocal_2 match) rather than removed, since a lower/warmer voice is
+        // still a reasonable, independently useful direction. Unlike the
+        // Cajun Moon analysis, overall top-end rolloff was nearly identical
+        // between the two takes (~-6.2 dB/oct either way); what actually
+        // differed was (1) fundamental pitch (~2-3 semitones apart — see
+        // "JJ Dark Vocal (Up)" for the measurement) and (2) low-mid "chest"
+        // body, which this preset uses Warmth's Body control to add.
         { "JJ Dark Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, -3.0f, -3.0f, 100.0f, 2800.0f, 25.0f, 70.0f, 70.0f, false, false, true, true, true },
+
+        // "JJ Dark Vocal (Up)": the corrected, literal match to the
+        // vocal_1 (normal) -> vocal_2 (processed) direction — cross-
+        // correlating resampled vocal_1 windows against time-aligned
+        // vocal_2 windows (which sidesteps the octave-error risk of
+        // per-file absolute pitch tracking) put vocal_2 consistently
+        // *above* vocal_1, ~2-3 semitones (noisy per-window estimates,
+        // median 2.36st); +3 semitones (+300 cents) is used here as a
+        // clean, easy-to-dial-in round number in that range. Warmth's Body
+        // control is left off (0%) rather than boosted, since vocal_2's
+        // own 80-160Hz band actually sat *below* vocal_1's, not above it —
+        // unlike "JJ Dark Vocal" above, this preset doesn't add chest
+        // fullness. Tone/Drive/Mix carried over unchanged for the same
+        // rolled-off top end both presets share.
+        { "JJ Dark Vocal (Up)", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, 3.0f, 3.0f, 100.0f, 2800.0f, 25.0f, 0.0f, 70.0f, false, false, true, true, true },
 
         // "Octave Width": a stereo width effect built from Drop's
         // independent L/R rather than Shift's cents-level microshift — the

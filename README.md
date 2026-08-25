@@ -135,7 +135,7 @@ its own on/off switch, independent of its Mix knob — see "How it works" above.
 
 ## Factory presets
 
-The plugin exposes seven factory presets (`Source/PluginProcessor.cpp`,
+The plugin exposes eight factory presets (`Source/PluginProcessor.cpp`,
 `getPresets()`) through the host's own preset menu (in Logic: the preset
 field at the top of the plugin window) — no in-plugin preset UI needed:
 
@@ -154,23 +154,36 @@ field at the top of the plugin window) — no in-plugin preset UI needed:
   width off, slapback off, a light touch of Vibrato (1.1 Hz, 3.5 ms depth,
   15% mix — present but no longer the main event), and **Warmth on** (Tone
   2.8 kHz, Drive 25%, Mix 70%) carrying the actual character.
-- **JJ Dark Vocal** — built from a second, more targeted comparison: two
-  takes of the same performance, `example/cajunmoon_vocal_vocal_1.mp3` (the
-  dark one) and `example/cajunmoon_vocal_vocal_2.mp3` (the normal one).
-  Unlike the Cajun Moon analysis above, overall top-end rolloff turned out
-  to be nearly identical between the two takes (spectral tilt ~−6.2 dB/oct
-  either way) — top-end darkness wasn't what distinguished them. Two other
-  measurements were: (1) autocorrelation-based pitch tracking put the dark
-  take's median fundamental at ~160Hz vs ~193Hz for the normal take, roughly
-  3 semitones lower, and (2) octave-band analysis found the dark take's
-  80–160Hz "chest" band sitting only ~3dB below its own spectral peak,
-  vs ~16dB down in the normal take — i.e. far more low-mid body. So this
-  preset leans on the two controls that target exactly those two traits:
-  **Drop on** (−3 semitones, 100% mix) for the pitch, and **Warmth on**
-  with **Body** engaged (Tone 2.8 kHz, Drive 25%, Body 70%, Mix 70%) for the
-  chest fullness plus the same rolled-off top end as Cajun Moon Vocal. Width
-  and slapback stay off, with the same light Cajun-Moon-style vibrato as a
-  finishing touch.
+- **JJ Dark Vocal** — originally built from a second, more targeted
+  comparison: two takes of the same performance,
+  `example/cajunmoon_vocal_vocal_1.mp3` and `example/cajunmoon_vocal_vocal_2.mp3`.
+  **Note:** the file/character mapping used at the time (vocal_1 = "dark",
+  vocal_2 = "normal") was later confirmed backwards — vocal_1 is the normal
+  take, vocal_2 the processed/"dark" one (see "JJ Dark Vocal (Up)" below,
+  which targets the corrected, literal direction). This preset predates
+  that correction and pitches *down* rather than up; kept as-is as a
+  deliberately different, deeper take on "dark" rather than removed, since
+  it's still a reasonable, independently useful direction. What the
+  original analysis got right regardless of file labels: overall top-end
+  rolloff was nearly identical between the two takes (spectral tilt
+  ~−6.2 dB/oct either way) — top-end darkness wasn't what distinguished
+  them — while low-mid "chest" body and fundamental pitch did differ
+  substantially. This preset uses **Drop on** (−3 semitones, 100% mix) and
+  **Warmth on** with **Body** engaged (Tone 2.8 kHz, Drive 25%, Body 70%,
+  Mix 70%) for a lower, chestier voice. Width and slapback stay off, with
+  the same light Cajun-Moon-style vibrato as a finishing touch.
+- **JJ Dark Vocal (Up)** — the corrected, literal vocal_1 (normal) →
+  vocal_2 (processed) match. Cross-correlating resampled vocal_1 windows
+  against time-aligned vocal_2 windows (which sidesteps the octave-error
+  risk of per-file absolute pitch tracking) put vocal_2 consistently
+  *above* vocal_1 in pitch, by roughly 2–3 semitones (noisy per-window
+  estimates, median 2.36 st); **Drop on** at **+3 semitones** (a clean,
+  easy-to-dial-in round number in that range) is used here instead of JJ
+  Dark Vocal's −3. Warmth's **Body** is left at 0% rather than boosted,
+  since vocal_2's own 80–160Hz band actually sat *below* vocal_1's, not
+  above it — unlike JJ Dark Vocal, this preset doesn't add chest fullness.
+  Tone/Drive/Mix are carried over unchanged for the same rolled-off top end
+  both presets share.
 - **Octave Width** — a stereo width effect built from Drop's independent
   L/R rather than Shift's cents-level microshift: the left channel drops a
   full octave (Drop Amount L −12 st), the right stays at pitch (Drop Amount

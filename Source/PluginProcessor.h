@@ -104,7 +104,7 @@ private:
         bool shiftOn, slapOn, vibratoOn, dropOn, warmthOn;
     };
 
-    static const std::array<Preset, 7>& getPresets();
+    static const std::array<Preset, 8>& getPresets();
     void applyPreset (int index);
     int currentProgram = 0;
 
