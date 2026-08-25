@@ -135,7 +135,7 @@ its own on/off switch, independent of its Mix knob — see "How it works" above.
 
 ## Factory presets
 
-The plugin exposes four factory presets (`Source/PluginProcessor.cpp`,
+The plugin exposes seven factory presets (`Source/PluginProcessor.cpp`,
 `getPresets()`) through the host's own preset menu (in Logic: the preset
 field at the top of the plugin window) — no in-plugin preset UI needed:
 
@@ -171,6 +171,24 @@ field at the top of the plugin window) — no in-plugin preset UI needed:
   chest fullness plus the same rolled-off top end as Cajun Moon Vocal. Width
   and slapback stay off, with the same light Cajun-Moon-style vibrato as a
   finishing touch.
+- **Octave Width** — a stereo width effect built from Drop's independent
+  L/R rather than Shift's cents-level microshift: the left channel drops a
+  full octave (Drop Amount L −12 st), the right stays at pitch (Drop Amount
+  R 0 st), blended at 55% so the dry fundamental stays audible under the
+  sub-octave layer. Reads more like an old octave pedal panned across the
+  stereo field than a chorus-y doubler. Shift, Slapback, Vibrato and Warmth
+  all stay off so the technique reads clearly on its own.
+- **Slapback Twang** — the classic rockabilly move: a bright, dry signal
+  with nothing but one fairly hot slapback repeat (Feedback 25% for a
+  couple of decaying echoes rather than a single one). Everything else
+  (Shift, Vibrato, Warmth) stays off on purpose, including Warmth, so the
+  top end stays open/twangy rather than rolling dark.
+- **Deep Baritone** — JJ Dark Vocal pushed further into effect territory
+  rather than a natural-sounding voice: Drop at −7 semitones (vs JJ Dark
+  Vocal's −3) with Warmth's Body and Drive both turned up further, for a
+  growly, monster-movie-trailer low end. No Vibrato here (unlike the other
+  dark/warm presets) — a wobble reads as comic rather than menacing at this
+  depth.
 
 To add more presets, extend the `std::array<Preset, N>` returned by
 `getPresets()` in `PluginProcessor.cpp` (and bump `N`).

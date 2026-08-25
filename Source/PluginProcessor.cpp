@@ -403,10 +403,10 @@ juce::AudioProcessorEditor* JJBreezeAudioProcessor::createEditor()
     return new JJBreezeAudioProcessorEditor (*this);
 }
 
-const std::array<JJBreezeAudioProcessor::Preset, 4>& JJBreezeAudioProcessor::getPresets()
+const std::array<JJBreezeAudioProcessor::Preset, 7>& JJBreezeAudioProcessor::getPresets()
 {
     // pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix, vibratoRate, vibratoDepth, vibratoMix, dropAmountL, dropAmountR, dropMix, warmthTone, warmthDrive, warmthBody, warmthMix, shiftOn, slapOn, vibratoOn, dropOn, warmthOn
-    static const std::array<Preset, 4> presets { {
+    static const std::array<Preset, 7> presets { {
         { "Default",       12.0f, -12.0f, 15.0f, 15.0f, 150.0f, 50.0f, 110.0f, 15.0f,  0.0f, 1.2f, 3.0f,  0.0f, -3.0f, -3.0f, 0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  false, false, false, false },
 
         // A laid-back, intimate vocal in the JJ Cale direction: the width
@@ -442,6 +442,32 @@ const std::array<JJBreezeAudioProcessor::Preset, 4>& JJBreezeAudioProcessor::get
         // off with the same light Cajun-Moon-style vibrato as a finishing
         // touch.
         { "JJ Dark Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, -3.0f, -3.0f, 100.0f, 2800.0f, 25.0f, 70.0f, 70.0f, false, false, true, true, true },
+
+        // "Octave Width": a stereo width effect built from Drop's
+        // independent L/R rather than Shift's cents-level microshift — the
+        // left channel drops a full octave (-12 semitones), the right stays
+        // at pitch, blended at 55% so the dry fundamental stays audible
+        // under the sub-octave layer. A different flavor of "wide" than
+        // Default's cents-level detune: more like an old octave pedal
+        // panned across the stereo field than a chorus-y doubler. Shift,
+        // Slapback, Vibrato and Warmth all stay off so the technique reads
+        // clearly on its own.
+        { "Octave Width", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.2f, 3.0f, 0.0f, -12.0f, 0.0f, 55.0f, 3500.0f, 20.0f, 0.0f, 0.0f, false, false, false, true, false },
+
+        // "Slapback Twang": the classic rockabilly move — a bright, dry
+        // signal with nothing but a single, fairly hot slapback repeat
+        // (Feedback 25% for a couple of decaying echoes rather than one).
+        // Everything else stays off on purpose, including Warmth, so the
+        // top end stays open/twangy rather than rolling dark.
+        { "Slapback Twang", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 110.0f, 25.0f, 35.0f, 1.2f, 3.0f, 0.0f, -3.0f, -3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, false, true, false, false, false },
+
+        // "Deep Baritone": JJ Dark Vocal pushed further into effect
+        // territory rather than a natural-sounding voice — Drop at -7
+        // semitones (vs JJ Dark Vocal's -3) with Warmth's Body and Drive
+        // both turned up further, for a growly, monster-movie-trailer
+        // low end. No Vibrato here (unlike the other dark/warm presets) —
+        // a wobble reads as comic rather than menacing at this depth.
+        { "Deep Baritone", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 0.0f, -7.0f, -7.0f, 100.0f, 2500.0f, 35.0f, 85.0f, 80.0f, false, false, false, true, true },
     } };
     return presets;
 }
