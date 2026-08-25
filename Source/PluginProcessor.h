@@ -35,6 +35,16 @@ namespace ParamIDs
     static const juce::String shiftOn    = "shiftOn";
     static const juce::String vibratoOn  = "vibratoOn";
     static const juce::String warmthOn   = "warmthOn";
+
+    // Every parameter ID above, in a fixed order — for code that needs to
+    // iterate the whole patch generically (the editor's A/B compare
+    // snapshot) rather than naming each one.
+    static const std::array<juce::String, 16> all {
+        pitchL, pitchR, delayL, delayR, focus, mix,
+        vibratoRate, vibratoDepth, vibratoMix,
+        warmthTone, warmthDrive, warmthBody, warmthMix,
+        shiftOn, vibratoOn, warmthOn
+    };
 }
 
 class JJBreezeAudioProcessor : public juce::AudioProcessor
@@ -71,8 +81,21 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
+    // A/B compare: lets the editor snapshot the full patch into slot 0
+    // ("A") or 1 ("B") and recall it later, so a user can quickly flip
+    // between two variations while dialing in a sound. Editor-only
+    // convenience, not part of the saved session state — a fresh project
+    // reload starts with just slot A, holding whatever was last recalled.
+    void storeCompareSnapshot (int slot);
+    void recallCompareSnapshot (int slot);
+    bool hasCompareSnapshotStored (int slot) const { return slot >= 0 && slot < 2 && hasCompareSnapshot[(size_t) slot]; }
+    int activeCompareSlot = 0;
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+    std::array<float, ParamIDs::all.size()> compareSnapshots[2] {};
+    bool hasCompareSnapshot[2] { false, false };
 
     // Factory presets: a name plus a value for every ParamIDs entry, in the
     // same order createParameterLayout() adds them. Index 0 ("Default") is

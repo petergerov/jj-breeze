@@ -121,11 +121,25 @@ delay values you want directly.
 Each of the three sections (Shift, Vibrato, Warmth) also has its own on/off
 switch, independent of its Mix knob — see "How it works" above.
 
+The editor's header carries a few more workflow controls: a **preset**
+picker (see Factory presets below), an **A/B** compare toggle for quickly
+flipping between two variations of a patch while dialing it in (switching
+away from a slot stores whatever you last tweaked there, and a slot you
+haven't touched yet starts as a copy of the other one, so the first switch
+is silent), and the window itself is resizable (drag the bottom-right
+corner) with a fixed aspect ratio, rather than a fixed size. Every knob
+resets to its default on double-click, and hovering any knob, toggle, the
+preset picker or an A/B button shows a tooltip explaining what it does —
+most usefully on Focus, whose crossover behavior (everything below it stays
+untouched — see "How it works" above) isn't obvious from the knob alone.
+
 ## Factory presets
 
 The plugin exposes eight factory presets (`Source/PluginProcessor.cpp`,
-`getPresets()`) through the host's own preset menu (in Logic: the preset
-field at the top of the plugin window) — no in-plugin preset UI needed:
+`getPresets()`), selectable either from the in-plugin preset picker in the
+editor's header or from the host's own preset menu (in Logic: the preset
+field at the top of the plugin window) — both drive the same underlying
+program list, so they always stay in sync with each other:
 
 - **Default** — Pitch L/R +300 cents (matching sign — a mono-compatible
   pitch-up, not a wide microshift), Focus at its own 150Hz default, Mix 50%.

@@ -7,6 +7,10 @@ JJBreezeAudioProcessor::JJBreezeAudioProcessor()
                            .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
 {
+    // Slot A starts out as whatever the default patch is, so the A/B
+    // compare toggle in the editor has something meaningful to flip back to
+    // from the very first launch.
+    storeCompareSnapshot (0);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::createParameterLayout()
@@ -462,6 +466,29 @@ void JJBreezeAudioProcessor::setCurrentProgram (int index)
 
     currentProgram = index;
     applyPreset (index);
+    updateHostDisplay();
+}
+
+void JJBreezeAudioProcessor::storeCompareSnapshot (int slot)
+{
+    if (slot < 0 || slot > 1)
+        return;
+
+    for (size_t i = 0; i < ParamIDs::all.size(); ++i)
+        if (auto* param = apvts.getParameter (ParamIDs::all[i]))
+            compareSnapshots[slot][i] = param->getValue();
+
+    hasCompareSnapshot[slot] = true;
+}
+
+void JJBreezeAudioProcessor::recallCompareSnapshot (int slot)
+{
+    if (slot < 0 || slot > 1 || ! hasCompareSnapshot[slot])
+        return;
+
+    for (size_t i = 0; i < ParamIDs::all.size(); ++i)
+        if (auto* param = apvts.getParameter (ParamIDs::all[i]))
+            param->setValueNotifyingHost (compareSnapshots[slot][i]);
 }
 
 void JJBreezeAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

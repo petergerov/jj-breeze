@@ -201,7 +201,8 @@ public:
 class LabelledKnob : public juce::Component
 {
 public:
-    LabelledKnob (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramID, const juce::String& caption)
+    LabelledKnob (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramID, const juce::String& caption,
+                  const juce::String& tooltip)
     {
         slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 72, 20);
@@ -210,15 +211,27 @@ public:
         slider.setColour (juce::Slider::textBoxTextColourId, GearPalette::ledText);
         slider.setColour (juce::Slider::textBoxBackgroundColourId, GearPalette::ledBackground);
         slider.setColour (juce::Slider::textBoxOutlineColourId, GearPalette::metalDark);
+        slider.setTooltip (tooltip);
         addAndMakeVisible (slider);
 
         label.setText (caption, juce::dontSendNotification);
         label.setJustificationType (juce::Justification::centred);
         label.setFont (juce::Font (juce::FontOptions (12.5f, juce::Font::bold)).withExtraKerningFactor (0.08f));
         label.setColour (juce::Label::textColourId, GearPalette::textLight.withAlpha (0.85f));
+        label.setTooltip (tooltip);
         addAndMakeVisible (label);
 
         attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, paramID, slider);
+
+        // Double-click resets the knob to the parameter's default — the
+        // attachment above configures the slider's range from the
+        // parameter, so the default has to be pulled and converted the same
+        // way, rather than guessed as e.g. the midpoint.
+        if (auto* param = apvts.getParameter (paramID))
+        {
+            const auto range = apvts.getParameterRange (paramID);
+            slider.setDoubleClickReturnValue (true, range.convertFrom0to1 (param->getDefaultValue()));
+        }
     }
 
     void resized() override
@@ -246,22 +259,43 @@ public:
 
 private:
     void setUpSectionLabel (juce::Label& label, const juce::String& text);
-    void setUpToggle (LedToggleButton& button);
+    void setUpToggle (LedToggleButton& button, const juce::String& tooltip);
     void drawScrew (juce::Graphics& g, juce::Point<float> centre) const;
 
-    // Polls the three section-enabled parameters so a toggle flipped by the
-    // host (automation, preset recall) collapses/expands its section too,
-    // not just clicks made in this editor.
+    // Leaves the slot being switched away from holding whatever the user
+    // last tweaked (so it isn't lost), makes a first-time target slot start
+    // as a copy of the current sound (so the initial switch is silent), then
+    // recalls the target slot and updates which A/B button reads as active.
+    void switchCompareSlot (int targetSlot);
+    void updateCompareButtonColours();
+
+    // Polls the three section-enabled parameters (so a toggle flipped by
+    // the host — automation, preset recall — collapses/expands its section
+    // too, not just clicks made in this editor) and the current program
+    // (so picking a preset from the host's own menu updates presetBox too).
     void timerCallback() override;
 
     JJBreezeAudioProcessor& processorRef;
     RetroLookAndFeel retroLookAndFeel;
+
+    // Needed for any child component's setTooltip() text to actually pop up
+    // as a tooltip; owns no visible bounds of its own.
+    juce::TooltipWindow tooltipWindow { this, 500 };
 
     juce::Label titleLabel;
     juce::Label subtitleLabel;
     juce::Label shiftSectionLabel;
     juce::Label vibratoSectionLabel;
     juce::Label warmthSectionLabel;
+
+    // Factory-preset picker, backed by JJBreezeAudioProcessor's existing
+    // program list — previously only reachable through the host's own
+    // (often buried) preset menu.
+    juce::ComboBox presetBox;
+    int lastKnownProgram = -1;
+
+    // A/B compare — see JJBreezeAudioProcessor::storeCompareSnapshot/recallCompareSnapshot.
+    juce::TextButton compareAButton { "A" }, compareBButton { "B" };
 
     LedToggleButton shiftToggle, vibratoToggle, warmthToggle;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> shiftToggleAttachment,

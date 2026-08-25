@@ -5,19 +5,41 @@ using namespace GearPalette;
 JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processorRef (p),
-      pitchLKnob (p.apvts, ParamIDs::pitchL, "PITCH L"),
-      pitchRKnob (p.apvts, ParamIDs::pitchR, "PITCH R"),
-      delayLKnob (p.apvts, ParamIDs::delayL, "DELAY L"),
-      delayRKnob (p.apvts, ParamIDs::delayR, "DELAY R"),
-      focusKnob  (p.apvts, ParamIDs::focus,  "FOCUS"),
-      mixKnob    (p.apvts, ParamIDs::mix,    "MIX"),
-      vibratoRateKnob  (p.apvts, ParamIDs::vibratoRate,  "RATE"),
-      vibratoDepthKnob (p.apvts, ParamIDs::vibratoDepth, "DEPTH"),
-      vibratoMixKnob   (p.apvts, ParamIDs::vibratoMix,   "MIX"),
-      warmthToneKnob   (p.apvts, ParamIDs::warmthTone,   "TONE"),
-      warmthDriveKnob  (p.apvts, ParamIDs::warmthDrive,  "DRIVE"),
-      warmthBodyKnob   (p.apvts, ParamIDs::warmthBody,   "BODY"),
-      warmthMixKnob    (p.apvts, ParamIDs::warmthMix,    "MIX")
+      pitchLKnob (p.apvts, ParamIDs::pitchL, "PITCH L",
+                  "Left-channel pitch shift (±1200 ct = ±1 octave). A few cents gives classic "
+                  "microshift width; larger values (with Focus turned down) give a big pitch-shifted voice."),
+      pitchRKnob (p.apvts, ParamIDs::pitchR, "PITCH R",
+                  "Right-channel pitch shift, independent of Pitch L — opposite signs widen, matching "
+                  "signs shift the whole signal up or down."),
+      delayLKnob (p.apvts, ParamIDs::delayL, "DELAY L",
+                  "Left-channel delay time (0–250ms) for the modulated delay tap. Short times add "
+                  "subtle width; times above ~80ms read as a slapback echo."),
+      delayRKnob (p.apvts, ParamIDs::delayR, "DELAY R",
+                  "Right-channel delay time, independent of Delay L."),
+      focusKnob  (p.apvts, ParamIDs::focus,  "FOCUS",
+                  "Crossover point: everything below this frequency stays completely dry. Only the band "
+                  "above is fed through the pitch shifter + delay — turning Focus up protects more low "
+                  "end from being processed at all, it doesn't just cut lows from the wet signal."),
+      mixKnob    (p.apvts, ParamIDs::mix,    "MIX",
+                  "Blend between dry and the Shift section's (crossover-recombined) wet signal."),
+      vibratoRateKnob  (p.apvts, ParamIDs::vibratoRate,  "RATE",
+                        "Speed of the vibrato's pitch-wobble LFO."),
+      vibratoDepthKnob (p.apvts, ParamIDs::vibratoDepth, "DEPTH",
+                        "How far the swept delay moves — controls the intensity of the pitch wobble."),
+      vibratoMixKnob   (p.apvts, ParamIDs::vibratoMix,   "MIX",
+                        "Blend between dry and the vibrato-modulated signal. Independent of Shift's Mix — "
+                        "the two are summed, not crossfaded against each other."),
+      warmthToneKnob   (p.apvts, ParamIDs::warmthTone,   "TONE",
+                        "Low-pass cutoff of the final tone stage — lower values roll off more top end "
+                        "for a darker, more rolled-off character."),
+      warmthDriveKnob  (p.apvts, ParamIDs::warmthDrive,  "DRIVE",
+                        "Amount of gentle tanh soft-saturation applied after the low-pass, for a warmer, "
+                        "mildly overdriven character."),
+      warmthBodyKnob   (p.apvts, ParamIDs::warmthBody,   "BODY",
+                        "Fixed 150Hz low-shelf boost — adds low-mid fullness/chest without touching "
+                        "pitch or top end."),
+      warmthMixKnob    (p.apvts, ParamIDs::warmthMix,    "MIX",
+                        "Blend between the unprocessed sum and the Warmth-shaped output.")
 {
     setLookAndFeel (&retroLookAndFeel);
 
@@ -33,6 +55,41 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     subtitleLabel.setColour (juce::Label::textColourId, textMuted);
     subtitleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (subtitleLabel);
+
+    // Factory-preset picker. Previously the presets (JJBreezeAudioProcessor::
+    // getPresets()) were only reachable through the host's own preset menu,
+    // which in a host like Logic Pro is easy to miss entirely.
+    presetBox.setTooltip ("Load a factory preset — a starting point for the knobs below.");
+    presetBox.setTextWhenNothingSelected ("Preset...");
+    presetBox.setColour (juce::ComboBox::backgroundColourId, ledBackground);
+    presetBox.setColour (juce::ComboBox::textColourId, ledText);
+    presetBox.setColour (juce::ComboBox::outlineColourId, metalDark);
+    presetBox.setColour (juce::ComboBox::arrowColourId, accent);
+    for (int i = 0; i < processorRef.getNumPrograms(); ++i)
+        presetBox.addItem (processorRef.getProgramName (i), i + 1); // ComboBox item IDs are 1-based
+    presetBox.setSelectedId (processorRef.getCurrentProgram() + 1, juce::dontSendNotification);
+    lastKnownProgram = processorRef.getCurrentProgram();
+    presetBox.onChange = [this]
+    {
+        const auto index = presetBox.getSelectedId() - 1;
+        if (index >= 0)
+        {
+            processorRef.setCurrentProgram (index);
+            lastKnownProgram = index;
+        }
+    };
+    addAndMakeVisible (presetBox);
+
+    // A/B compare — see JJBreezeAudioProcessor::storeCompareSnapshot/recallCompareSnapshot.
+    compareAButton.setTooltip ("Compare slot A. Switching away stores your current tweaks here first.");
+    compareBButton.setTooltip ("Compare slot B. Starts as a copy of A the first time you switch to it.");
+    compareAButton.setClickingTogglesState (false);
+    compareBButton.setClickingTogglesState (false);
+    compareAButton.onClick = [this] { switchCompareSlot (0); };
+    compareBButton.onClick = [this] { switchCompareSlot (1); };
+    addAndMakeVisible (compareAButton);
+    addAndMakeVisible (compareBButton);
+    updateCompareButtonColours();
 
     addAndMakeVisible (pitchLKnob);
     addAndMakeVisible (pitchRKnob);
@@ -58,9 +115,9 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     // that section's contribution to the sound and collapses its knob row
     // (in resized()) so a disabled section can't confuse the user into
     // thinking its knobs still matter.
-    setUpToggle (shiftToggle);
-    setUpToggle (vibratoToggle);
-    setUpToggle (warmthToggle);
+    setUpToggle (shiftToggle,   "Turn the Shift section (pitch + delay widener) on or off.");
+    setUpToggle (vibratoToggle, "Turn the Vibrato section on or off.");
+    setUpToggle (warmthToggle,  "Turn the Warmth tone stage on or off.");
     shiftToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, ParamIDs::shiftOn, shiftToggle);
     vibratoToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
@@ -72,11 +129,19 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     // just a click here — poll and relayout so the collapse always matches.
     startTimerHz (15);
 
-    setResizable (false, false);
+    // Resizable (host-driven, plus a drag corner) rather than fixed, so the
+    // UI isn't stuck too small on a hi-DPI/scaled display. Locked to the
+    // design's own aspect ratio so knobs, panels and text all scale
+    // together instead of the layout stretching oddly in one direction.
+    constexpr int defaultWidth = 480, defaultHeight = 660;
+    setResizable (true, true);
+    setResizeLimits (defaultWidth * 3 / 4, defaultHeight * 3 / 4, defaultWidth * 2, defaultHeight * 2);
+    getConstrainer()->setFixedAspectRatio ((double) defaultWidth / (double) defaultHeight);
     // Shrunk from 760 (which fit Shift, Slapback, Vibrato and Warmth) now
     // that Slapback is gone — recomputed for three sections at the same
-    // per-row knob size as before, not just an arbitrary guess.
-    setSize (480, 620);
+    // per-row knob size as before, not just an arbitrary guess. Height grew
+    // by the preset/compare row added to the header.
+    setSize (defaultWidth, defaultHeight);
 }
 
 JJBreezeAudioProcessorEditor::~JJBreezeAudioProcessorEditor()
@@ -94,9 +159,37 @@ void JJBreezeAudioProcessorEditor::setUpSectionLabel (juce::Label& label, const 
     addAndMakeVisible (label);
 }
 
-void JJBreezeAudioProcessorEditor::setUpToggle (LedToggleButton& button)
+void JJBreezeAudioProcessorEditor::setUpToggle (LedToggleButton& button, const juce::String& tooltip)
 {
+    button.setTooltip (tooltip);
     addAndMakeVisible (button);
+}
+
+void JJBreezeAudioProcessorEditor::switchCompareSlot (int targetSlot)
+{
+    if (targetSlot == processorRef.activeCompareSlot)
+        return;
+
+    // Save the tweaks made in the slot we're leaving, then — if the target
+    // slot has never been touched — seed it as a copy of what's currently
+    // live, so the very first switch to it is silent and only later edits
+    // to that slot start to diverge.
+    processorRef.storeCompareSnapshot (processorRef.activeCompareSlot);
+    if (! processorRef.hasCompareSnapshotStored (targetSlot))
+        processorRef.storeCompareSnapshot (targetSlot);
+
+    processorRef.recallCompareSnapshot (targetSlot);
+    processorRef.activeCompareSlot = targetSlot;
+    updateCompareButtonColours();
+}
+
+void JJBreezeAudioProcessorEditor::updateCompareButtonColours()
+{
+    const bool onA = processorRef.activeCompareSlot == 0;
+    compareAButton.setColour (juce::TextButton::buttonColourId, onA ? accentDim : metalDark);
+    compareAButton.setColour (juce::TextButton::textColourOffId, onA ? accent : textMuted);
+    compareBButton.setColour (juce::TextButton::buttonColourId, onA ? metalDark : accentDim);
+    compareBButton.setColour (juce::TextButton::textColourOffId, onA ? textMuted : accent);
 }
 
 void JJBreezeAudioProcessorEditor::timerCallback()
@@ -112,6 +205,17 @@ void JJBreezeAudioProcessorEditor::timerCallback()
         warmthWasOn = warmthOn;
         resized();
         repaint();
+    }
+
+    // The current program can also change from outside this editor — the
+    // host's own preset menu, or a saved session reloading — keep the
+    // picker in sync without re-triggering onChange (which would otherwise
+    // just re-apply the same preset).
+    const int currentProgram = processorRef.getCurrentProgram();
+    if (currentProgram != lastKnownProgram)
+    {
+        lastKnownProgram = currentProgram;
+        presetBox.setSelectedId (currentProgram + 1, juce::dontSendNotification);
     }
 }
 
@@ -129,7 +233,7 @@ void JJBreezeAudioProcessorEditor::drawScrew (juce::Graphics& g, juce::Point<flo
 }
 
 // Shared with resized() so panels, rules and knob rows all land in the same place.
-static constexpr int headerHeight = 68;
+static constexpr int headerHeight = 108; // title + subtitle + preset/compare row
 static constexpr int outerPadding = 20; // horizontal margin
 static constexpr int topPadding = 12;
 static constexpr int bottomPadding = 36; // extra clearance so the bottom corner screws stay visible
@@ -208,8 +312,18 @@ void JJBreezeAudioProcessorEditor::resized()
     // drawn separately (in paint()) off to the left and doesn't need room
     // carved out of the text layout.
     auto header = area.removeFromTop (headerHeight).reduced (18, 10);
-    titleLabel.setBounds (header.removeFromTop (28));
-    subtitleLabel.setBounds (header);
+    titleLabel.setBounds (header.removeFromTop (26));
+    subtitleLabel.setBounds (header.removeFromTop (16));
+    header.removeFromTop (8); // gap before the preset/compare row
+
+    // Preset picker (left, flexible width) and A/B compare buttons (right,
+    // fixed width) share the header's last row.
+    auto controlsRow = header;
+    compareBButton.setBounds (controlsRow.removeFromRight (30));
+    controlsRow.removeFromRight (4);
+    compareAButton.setBounds (controlsRow.removeFromRight (30));
+    controlsRow.removeFromRight (10);
+    presetBox.setBounds (controlsRow);
 
     area.removeFromTop (8); // gap before the knob sections
     area.removeFromLeft (outerPadding);
