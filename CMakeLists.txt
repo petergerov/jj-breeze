@@ -28,7 +28,7 @@ juce_add_plugin(jj_breeze
     PLUGIN_MANUFACTURER_CODE Grov
     PLUGIN_CODE Jjbz
     FORMATS AU VST3 Standalone
-    PRODUCT_NAME "jj-breeze"
+    PRODUCT_NAME "j.j.breeze"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
