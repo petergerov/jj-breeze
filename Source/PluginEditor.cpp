@@ -5,8 +5,9 @@ using namespace GearPalette;
 JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processorRef (p),
-      dropAmountKnob (p.apvts, ParamIDs::dropAmount, "SEMITONES"),
-      dropMixKnob    (p.apvts, ParamIDs::dropMix,    "MIX"),
+      dropAmountLKnob (p.apvts, ParamIDs::dropAmountL, "AMOUNT L"),
+      dropAmountRKnob (p.apvts, ParamIDs::dropAmountR, "AMOUNT R"),
+      dropMixKnob     (p.apvts, ParamIDs::dropMix,     "MIX"),
       pitchLKnob (p.apvts, ParamIDs::pitchL, "PITCH L"),
       pitchRKnob (p.apvts, ParamIDs::pitchR, "PITCH R"),
       delayLKnob (p.apvts, ParamIDs::delayL, "DELAY L"),
@@ -40,7 +41,8 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     addAndMakeVisible (subtitleLabel);
 
     setUpSectionLabel (dropSectionLabel, "DROP");
-    addAndMakeVisible (dropAmountKnob);
+    addAndMakeVisible (dropAmountLKnob);
+    addAndMakeVisible (dropAmountRKnob);
     addAndMakeVisible (dropMixKnob);
 
     addAndMakeVisible (pitchLKnob);
@@ -260,9 +262,10 @@ void JJBreezeAudioProcessorEditor::resized()
     // are both off, rather than leaving dead space.
     const int rowHeight = (area.getHeight() - numSectionLabels * sectionLabelHeight - numSectionGaps * sectionGap) / activeRows;
 
-    // DROP — one row, two knobs (Amount, Mix). Runs first in both the UI
-    // and the signal chain: a static pitch shift on the voice itself,
-    // ahead of Shift's micro-detune widener.
+    // DROP — one row, three knobs (Amount L, Amount R, Mix) — independent
+    // per channel, like Shift's Pitch L/R. Runs first in both the UI and
+    // the signal chain: a static pitch shift on the voice itself, ahead of
+    // Shift's micro/macro-detune shifter.
     {
         auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
         auto labelRow = fullLabelRow;
@@ -270,7 +273,8 @@ void JJBreezeAudioProcessorEditor::resized()
         labelRow.removeFromRight (6);
         dropSectionLabel.setBounds (labelRow);
 
-        dropAmountKnob.setVisible (dropOn);
+        dropAmountLKnob.setVisible (dropOn);
+        dropAmountRKnob.setVisible (dropOn);
         dropMixKnob.setVisible (dropOn);
 
         if (dropOn)
@@ -278,9 +282,10 @@ void JJBreezeAudioProcessorEditor::resized()
             auto dropRow = area.removeFromTop (rowHeight);
             dropPanelBounds = fullLabelRow.getUnion (dropRow).expanded (6, 4);
 
-            const int knobWidth = dropRow.getWidth() / 2;
-            dropAmountKnob.setBounds (dropRow.removeFromLeft (knobWidth).reduced (10));
-            dropMixKnob.setBounds    (dropRow.reduced (10));
+            const int knobWidth = dropRow.getWidth() / 3;
+            dropAmountLKnob.setBounds (dropRow.removeFromLeft (knobWidth).reduced (10));
+            dropAmountRKnob.setBounds (dropRow.removeFromLeft (knobWidth).reduced (10));
+            dropMixKnob.setBounds     (dropRow.reduced (10));
         }
         else
         {

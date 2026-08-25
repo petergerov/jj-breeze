@@ -28,9 +28,11 @@ namespace ParamIDs
 
     // Drop: a static, semitone-scale pitch shift applied to the voice
     // itself (before any other section), for a deeper/darker character —
-    // distinct from the Shift section's ±50-cent micro-detune widener.
-    // Off by default (Drop Mix = 0%), like Slapback/Vibrato/Warmth.
-    static const juce::String dropAmount   = "dropAmount";   // semitones, bipolar
+    // distinct from the Shift section's ±1200-cent micro/macro shifter.
+    // Independent per channel, like Pitch L/R. Off by default (Drop Mix =
+    // 0%), like Slapback/Vibrato/Warmth.
+    static const juce::String dropAmountL  = "dropAmountL";  // semitones, bipolar
+    static const juce::String dropAmountR  = "dropAmountR";  // semitones, bipolar
     static const juce::String dropMix      = "dropMix";      // 0..1
 
     // Warmth: a final tone stage (low-shelf body boost + low-pass + soft
@@ -97,7 +99,7 @@ private:
     {
         const char* name;
         float pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix,
-              vibratoRate, vibratoDepth, vibratoMix, dropAmount, dropMix,
+              vibratoRate, vibratoDepth, vibratoMix, dropAmountL, dropAmountR, dropMix,
               warmthTone, warmthDrive, warmthBody, warmthMix;
         bool shiftOn, slapOn, vibratoOn, dropOn, warmthOn;
     };
@@ -145,7 +147,8 @@ private:
     // Drop: a static, semitone-scale pitch shift on the voice itself,
     // applied before every other section (Shift/Slapback/Vibrato/Warmth all
     // then act on its output the same as they would on the plain dry
-    // signal) — see ParamIDs::dropAmount/dropMix above and PitchDrop.h.
+    // signal) — see ParamIDs::dropAmountL/dropAmountR/dropMix above and
+    // PitchDrop.h.
     PitchDropShifter dropL, dropR;
 
     // Vibrato: continuous LFO-driven pitch modulation via a swept short

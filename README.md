@@ -21,15 +21,17 @@ to JJ Cale's "Call Me the Breeze."
 ## How it works
 
 Before any of that, **Drop** (`Source/DSP/PitchDrop.h`) can apply a static,
-semitone-scale pitch shift to the voice itself, blended against dry by its
-own Mix knob — everything below (Shift, Slapback, Vibrato, Warmth) then
-treats that blend as its input, the same way it previously treated the raw
-dry signal. It's the same dual-tap crossfaded delay-line technique as the
-Shift section's pitch shifter (both now use a 70ms grain and cover the same
+semitone-scale pitch shift to the voice itself — independently per channel,
+like Shift's Pitch L/R — blended against dry by one shared Mix knob;
+everything below (Shift, Slapback, Vibrato, Warmth) then treats that blend
+as its input, the same way it previously treated the raw dry signal. It's
+the same dual-tap crossfaded delay-line technique as the Shift section's
+pitch shifter (both now use a 70ms grain and cover the same
 ±12-semitone/±1200-cent range), and it's a genuinely separate mechanism —
-not a UI convenience wrapper around Shift — mainly to be a single amount
-applied identically to both channels, always full-band, with one Mix knob.
-Off by default (Drop Mix = 0%).
+not a UI convenience wrapper around Shift — mainly in that it's always
+full-band (not gated by Focus's crossover the way Shift's wet path is; see
+point 3 below) and shares one Mix rather than being wired through Shift's
+Mix/Focus. Off by default (Drop Mix = 0%).
 
 Each channel then runs through:
 
@@ -108,8 +110,9 @@ delay values you want directly.
 
 | Control | Range | What it does |
 |---|---|---|
-| **Drop Amount** | −12 to +12 semitones | Static pitch shift applied to the voice itself, ahead of every other section. Default −3 (down). Negative/deeper is the "dark voice" direction; unlike Pitch L/R at their default range this isn't a subtle detune — a few semitones is clearly audible. |
-| **Drop Mix** | 0–100% | Blend of the pitch-dropped voice with the plain dry signal. 0% by default (off). |
+| **Drop Amount L** | −12 to +12 semitones | Static pitch shift applied to the left channel, ahead of every other section. Default −3 (down). Negative/deeper is the "dark voice" direction; unlike Pitch L/R at their default range this isn't a subtle detune — a few semitones is clearly audible. |
+| **Drop Amount R** | −12 to +12 semitones | Same, for the right channel. Default −3 — matching Amount L keeps the drop mono-compatible; set them apart for an octave-detune-style width effect instead. |
+| **Drop Mix** | 0–100% | Blend of the pitch-dropped voice (both channels) with the plain dry signal. 0% by default (off). |
 | **Pitch L** | −1200 to +1200 cents | Pitch shift applied to the left channel. Default +12 (up). Skewed so fine micro-detune territory near 0 still gets most of the knob's travel, but the full ±1 octave is reachable — so besides the classic microshift widening, Shift's independent per-channel Pitch *and* Delay controls are also a way to dial in a big, semitone-scale dark/deep drop directly (matching Pitch L and R and using Mix/Focus like a "wet" pitch-drop), as an alternative to the single-amount, both-channels-together Drop section above. |
 | **Pitch R** | −1200 to +1200 cents | Pitch shift applied to the right channel. Default −12 (down) — opposite Pitch L gives the classic wide microshift; matching signs instead gives a more mono-compatible width (or, at large values, a mono-compatible pitch drop) via delay offset alone. |
 | **Delay L** | 0–40 ms | Base delay time on the left channel, with subtle built-in modulation. |

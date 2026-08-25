@@ -110,11 +110,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout JJBreezeAudioProcessor::crea
             .withStringFromValueFunction ([] (float v, int) { return juce::String ((int) v) + " %"; })));
 
     // Drop: a static, semitone-scale pitch shift on the voice itself —
-    // distinct from Shift's ±50-cent micro-detune widener, and the main
-    // driver of the "JJ Dark Vocal" character (see README.md). Off by
-    // default (Drop Mix = 0%), like Slapback/Vibrato/Warmth.
+    // distinct from Shift's ±1200-cent micro/macro shifter mainly in being
+    // full-band always (not gated by Focus) — and the main driver of the
+    // "JJ Dark Vocal" character (see README.md). Independent per channel,
+    // like Pitch L/R. Off by default (Drop Mix = 0%), like Slapback/
+    // Vibrato/Warmth.
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { ParamIDs::dropAmount, 1 }, "Drop Amount",
+        juce::ParameterID { ParamIDs::dropAmountL, 1 }, "Drop Amount L",
+        juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), -3.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel ("st")
+            .withStringFromValueFunction ([] (float v, int) { return juce::String (v, 1) + " st"; })));
+
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { ParamIDs::dropAmountR, 1 }, "Drop Amount R",
         juce::NormalisableRange<float> (-12.0f, 12.0f, 0.01f), -3.0f,
         juce::AudioParameterFloatAttributes()
             .withLabel ("st")
@@ -268,7 +277,8 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const float vibRateHz   = apvts.getRawParameterValue (ParamIDs::vibratoRate)->load();
     const float vibDepthMs  = apvts.getRawParameterValue (ParamIDs::vibratoDepth)->load();
     const float vibMixAmt   = apvts.getRawParameterValue (ParamIDs::vibratoMix)->load() * 0.01f;
-    const float dropSemitones = apvts.getRawParameterValue (ParamIDs::dropAmount)->load();
+    const float dropSemitonesL = apvts.getRawParameterValue (ParamIDs::dropAmountL)->load();
+    const float dropSemitonesR = apvts.getRawParameterValue (ParamIDs::dropAmountR)->load();
     const float dropMixAmt    = apvts.getRawParameterValue (ParamIDs::dropMix)->load() * 0.01f;
     const float warmthToneHz  = apvts.getRawParameterValue (ParamIDs::warmthTone)->load();
     const float warmthDriveAmt = apvts.getRawParameterValue (ParamIDs::warmthDrive)->load() * 0.01f;
@@ -299,8 +309,8 @@ void JJBreezeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     slapback.setTimeMs (slapTimeMs);
     slapback.setFeedback (slapFeedbk);
 
-    dropL.setShiftSemitones (dropSemitones);
-    dropR.setShiftSemitones (dropSemitones);
+    dropL.setShiftSemitones (dropSemitonesL);
+    dropR.setShiftSemitones (dropSemitonesR);
 
     vibratoL.lfoRateHz  = vibRateHz;
     vibratoL.lfoDepthMs = vibDepthMs;
@@ -395,15 +405,15 @@ juce::AudioProcessorEditor* JJBreezeAudioProcessor::createEditor()
 
 const std::array<JJBreezeAudioProcessor::Preset, 4>& JJBreezeAudioProcessor::getPresets()
 {
-    // pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix, vibratoRate, vibratoDepth, vibratoMix, dropAmount, dropMix, warmthTone, warmthDrive, warmthBody, warmthMix, shiftOn, slapOn, vibratoOn, dropOn, warmthOn
+    // pitchL, pitchR, delayL, delayR, focus, mix, slapTime, slapFeedback, slapMix, vibratoRate, vibratoDepth, vibratoMix, dropAmountL, dropAmountR, dropMix, warmthTone, warmthDrive, warmthBody, warmthMix, shiftOn, slapOn, vibratoOn, dropOn, warmthOn
     static const std::array<Preset, 4> presets { {
-        { "Default",       12.0f, -12.0f, 15.0f, 15.0f, 150.0f, 50.0f, 110.0f, 15.0f,  0.0f, 1.2f, 3.0f,  0.0f, -3.0f, 0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  false, false, false, false },
+        { "Default",       12.0f, -12.0f, 15.0f, 15.0f, 150.0f, 50.0f, 110.0f, 15.0f,  0.0f, 1.2f, 3.0f,  0.0f, -3.0f, -3.0f, 0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  false, false, false, false },
 
         // A laid-back, intimate vocal in the JJ Cale direction: the width
         // is turned way down (a few cents, low mix) rather than off, so
         // there's still some doubling glue, plus a single, low-feedback
         // slapback repeat instead of the wide microshift being the star.
-        { "JJ Cale Vocal",  4.0f,  -4.0f,  8.0f, 10.0f, 300.0f, 18.0f, 100.0f, 12.0f, 20.0f, 1.2f, 3.0f,  0.0f, -3.0f, 0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  true,  false, false, false },
+        { "JJ Cale Vocal",  4.0f,  -4.0f,  8.0f, 10.0f, 300.0f, 18.0f, 100.0f, 12.0f, 20.0f, 1.2f, 3.0f,  0.0f, -3.0f, -3.0f, 0.0f,  3500.0f, 20.0f, 0.0f, 0.0f, true,  true,  false, false, false },
 
         // "Cajun Moon"-style warmth: retuned against an actual reference
         // recording (see example/cajunmoon_vocal.mp3) rather than guessed.
@@ -415,7 +425,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 4>& JJBreezeAudioProcessor::get
         // stay off, vibrato is now a light touch rather than the main
         // event, and Warmth — not vibrato — is what actually carries the
         // "Cajun Moon" character here.
-        { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, -3.0f, 0.0f, 2800.0f, 25.0f, 0.0f, 70.0f, false, false, true, false, true },
+        { "Cajun Moon Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, -3.0f, -3.0f, 0.0f, 2800.0f, 25.0f, 0.0f, 70.0f, false, false, true, false, true },
 
         // "JJ Dark Vocal": built by comparing two takes of the same
         // performance (example/cajunmoon_vocal_vocal_1.mp3, the dark one,
@@ -431,7 +441,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 4>& JJBreezeAudioProcessor::get
         // fullness a pitch-down alone doesn't add, and width/slapback stay
         // off with the same light Cajun-Moon-style vibrato as a finishing
         // touch.
-        { "JJ Dark Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, -3.0f, 100.0f, 2800.0f, 25.0f, 70.0f, 70.0f, false, false, true, true, true },
+        { "JJ Dark Vocal", 0.0f, 0.0f, 15.0f, 15.0f, 150.0f, 0.0f, 100.0f, 10.0f, 0.0f, 1.1f, 3.5f, 15.0f, -3.0f, -3.0f, 100.0f, 2800.0f, 25.0f, 70.0f, 70.0f, false, false, true, true, true },
     } };
     return presets;
 }
@@ -475,7 +485,8 @@ void JJBreezeAudioProcessor::applyPreset (int index)
     setParam (ParamIDs::vibratoRate,  preset.vibratoRate);
     setParam (ParamIDs::vibratoDepth, preset.vibratoDepth);
     setParam (ParamIDs::vibratoMix,   preset.vibratoMix);
-    setParam (ParamIDs::dropAmount,   preset.dropAmount);
+    setParam (ParamIDs::dropAmountL,  preset.dropAmountL);
+    setParam (ParamIDs::dropAmountR,  preset.dropAmountR);
     setParam (ParamIDs::dropMix,      preset.dropMix);
     setParam (ParamIDs::warmthTone,   preset.warmthTone);
     setParam (ParamIDs::warmthDrive,  preset.warmthDrive);

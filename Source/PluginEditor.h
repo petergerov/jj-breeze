@@ -273,7 +273,7 @@ private:
     // Panel backgrounds drawn behind each group of knobs.
     juce::Rectangle<int> dropPanelBounds, shiftPanelBounds, slapPanelBounds, vibratoPanelBounds, warmthPanelBounds;
 
-    LabelledKnob dropAmountKnob, dropMixKnob;
+    LabelledKnob dropAmountLKnob, dropAmountRKnob, dropMixKnob;
     LabelledKnob pitchLKnob, pitchRKnob, delayLKnob, delayRKnob, focusKnob, mixKnob;
     LabelledKnob slapTimeKnob, slapFeedbackKnob, slapMixKnob;
     LabelledKnob vibratoRateKnob, vibratoDepthKnob, vibratoMixKnob;
