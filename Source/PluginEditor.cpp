@@ -130,15 +130,7 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     addAndMakeVisible (saveButton);
 
     deleteButton.setTooltip ("Delete the selected user preset. Only enabled for user presets - factory presets can't be deleted.");
-    deleteButton.onClick = [this]
-    {
-        if (activeUserPresetName.isEmpty())
-            return;
-
-        processorRef.deleteUserPreset (activeUserPresetName);
-        activeUserPresetName.clear();
-        refreshPresetBox(); // falls back to showing the current factory program
-    };
+    deleteButton.onClick = [this] { promptAndDeleteUserPreset(); };
     addAndMakeVisible (deleteButton);
 
     // Undo/redo - mainly useful in the Standalone build, which (unlike
@@ -407,6 +399,31 @@ void JJBreezeAudioProcessorEditor::promptAndSaveUserPreset()
         processorRef.saveUserPreset (name);
         activeUserPresetName = name;
         refreshPresetBox();
+    }));
+}
+
+void JJBreezeAudioProcessorEditor::promptAndDeleteUserPreset()
+{
+    if (activeUserPresetName.isEmpty())
+        return;
+
+    auto* aw = new juce::AlertWindow ("Delete Preset",
+                                       "Delete \"" + activeUserPresetName + "\"? This can't be undone.",
+                                       juce::MessageBoxIconType::WarningIcon);
+    aw->addButton ("Delete", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    // Same ownership pattern as promptAndSaveUserPreset() above.
+    aw->enterModalState (true, juce::ModalCallbackFunction::create ([this, aw] (int result)
+    {
+        std::unique_ptr<juce::AlertWindow> ownedWindow (aw);
+
+        if (result != 1)
+            return;
+
+        processorRef.deleteUserPreset (activeUserPresetName);
+        activeUserPresetName.clear();
+        refreshPresetBox(); // falls back to showing the current factory program
     }));
 }
 
