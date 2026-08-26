@@ -1,7 +1,5 @@
 #include "PluginEditor.h"
 
-using namespace GearPalette;
-
 JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processorRef (p),
@@ -41,21 +39,46 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
       warmthMixKnob    (p.apvts, ParamIDs::warmthMix,    "MIX",
                         "Blend between the unprocessed sum and the Warmth-shaped output.")
 {
+    // Restore the persisted colourway before anything below sets a single
+    // cached colour, so every child is born already themed rather than
+    // painted once in the default theme and corrected a frame later. The
+    // pitchLKnob..warmthMixKnob members above were already constructed
+    // (in the init list, before this body runs) against GearPalette's
+    // compile-time default — applyTheme() below re-applies to them too.
+    applyTheme (p.uiThemeId);
+
     setLookAndFeel (&retroLookAndFeel);
 
     titleLabel.setText ("J.J.BREEZE", juce::dontSendNotification);
     titleLabel.setFont (juce::Font (juce::FontOptions ("Avenir Next Condensed", 24.0f, juce::Font::bold))
                              .withExtraKerningFactor (0.05f));
-    titleLabel.setColour (juce::Label::textColourId, textLight);
+    titleLabel.setColour (juce::Label::textColourId, currentTheme->textLight);
     titleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (titleLabel);
 
     versionLabel.setText ("v" JucePlugin_VersionString, juce::dontSendNotification);
     versionLabel.setFont (juce::Font (juce::FontOptions (9.5f, juce::Font::plain)).withExtraKerningFactor (0.03f));
-    versionLabel.setColour (juce::Label::textColourId, textMuted.withAlpha (0.55f));
+    versionLabel.setColour (juce::Label::textColourId, currentTheme->textMuted.withAlpha (0.55f));
     versionLabel.setJustificationType (juce::Justification::centred);
     versionLabel.setTooltip (JucePlugin_Name " " JucePlugin_VersionString);
     addAndMakeVisible (versionLabel);
+
+    // Theme picker - switches the whole panel's colourway; see applyTheme().
+    themeBox.setTooltip ("Change the panel's colourway.");
+    for (auto& t : GearPalette::allThemes())
+        themeBox.addItem (t.displayName, themeBox.getNumItems() + 1);
+    themeBox.setSelectedId (1 + (int) std::distance (GearPalette::allThemes().begin(),
+                                                       std::find_if (GearPalette::allThemes().begin(), GearPalette::allThemes().end(),
+                                                                      [this] (const GearPalette::Theme& t) { return t.id == currentTheme->id; })),
+                             juce::dontSendNotification);
+    themeBox.onChange = [this]
+    {
+        const int idx = themeBox.getSelectedId() - 1;
+        const auto& themes = GearPalette::allThemes();
+        if (idx >= 0 && idx < (int) themes.size())
+            applyTheme (themes[(size_t) idx].id);
+    };
+    addAndMakeVisible (themeBox);
 
     // Preset picker: factory presets (JJBreezeAudioProcessor::getPresets())
     // plus user presets saved from this editor - previously only the
@@ -63,10 +86,10 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     // preset menu, which in a host like Logic Pro is easy to miss entirely.
     presetBox.setTooltip ("Load a preset - a starting point for the knobs below.");
     presetBox.setTextWhenNothingSelected ("Preset...");
-    presetBox.setColour (juce::ComboBox::backgroundColourId, ledBackground);
-    presetBox.setColour (juce::ComboBox::textColourId, ledText);
-    presetBox.setColour (juce::ComboBox::outlineColourId, metalDark);
-    presetBox.setColour (juce::ComboBox::arrowColourId, accent);
+    presetBox.setColour (juce::ComboBox::backgroundColourId, currentTheme->ledBackground);
+    presetBox.setColour (juce::ComboBox::textColourId, currentTheme->ledText);
+    presetBox.setColour (juce::ComboBox::outlineColourId, currentTheme->metalDark);
+    presetBox.setColour (juce::ComboBox::arrowColourId, currentTheme->accent);
     presetBox.onChange = [this]
     {
         const int id = presetBox.getSelectedId();
@@ -210,7 +233,7 @@ void JJBreezeAudioProcessorEditor::setUpSectionLabel (juce::Label& label, const 
 {
     label.setText (text, juce::dontSendNotification);
     label.setFont (juce::Font (juce::FontOptions (12.0f, juce::Font::bold)).withExtraKerningFactor (0.14f));
-    label.setColour (juce::Label::textColourId, accent);
+    label.setColour (juce::Label::textColourId, currentTheme->accent);
     label.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (label);
 }
@@ -239,20 +262,61 @@ void JJBreezeAudioProcessorEditor::switchCompareSlot (int targetSlot)
     updateCompareButtonColours();
 }
 
+void JJBreezeAudioProcessorEditor::applyTheme (const juce::String& themeId)
+{
+    currentTheme = &GearPalette::findTheme (themeId);
+    processorRef.uiThemeId = currentTheme->id;
+
+    // Everything that draws itself with a `theme` pointer/member gets it
+    // reassigned here; everything else just gets re-coloured to match
+    // (titleLabel/versionLabel/presetBox/section labels/compare+bypass
+    // buttons below), same as their original setup did.
+    retroLookAndFeel.setTheme (*currentTheme);
+    shiftToggle.setTheme (*currentTheme);
+    vibratoToggle.setTheme (*currentTheme);
+    warmthToggle.setTheme (*currentTheme);
+    undoButton.setTheme (*currentTheme);
+    redoButton.setTheme (*currentTheme);
+
+    for (auto* knob : { &pitchLKnob, &pitchRKnob, &delayLKnob, &delayRKnob, &focusKnob, &mixKnob,
+                         &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob,
+                         &warmthToneKnob, &warmthDriveKnob, &warmthBodyKnob, &warmthMixKnob })
+        knob->applyTheme (*currentTheme);
+
+    titleLabel.setColour (juce::Label::textColourId, currentTheme->textLight);
+    versionLabel.setColour (juce::Label::textColourId, currentTheme->textMuted.withAlpha (0.55f));
+    for (auto* label : { &shiftSectionLabel, &vibratoSectionLabel, &warmthSectionLabel })
+        label->setColour (juce::Label::textColourId, currentTheme->accent);
+
+    presetBox.setColour (juce::ComboBox::backgroundColourId, currentTheme->ledBackground);
+    presetBox.setColour (juce::ComboBox::textColourId, currentTheme->ledText);
+    presetBox.setColour (juce::ComboBox::outlineColourId, currentTheme->metalDark);
+    presetBox.setColour (juce::ComboBox::arrowColourId, currentTheme->accent);
+
+    themeBox.setColour (juce::ComboBox::backgroundColourId, currentTheme->ledBackground);
+    themeBox.setColour (juce::ComboBox::textColourId, currentTheme->ledText);
+    themeBox.setColour (juce::ComboBox::outlineColourId, currentTheme->metalDark);
+    themeBox.setColour (juce::ComboBox::arrowColourId, currentTheme->accent);
+
+    updateCompareButtonColours();
+    updateBypassButtonColour();
+    repaint();
+}
+
 void JJBreezeAudioProcessorEditor::updateCompareButtonColours()
 {
     const bool onA = processorRef.activeCompareSlot == 0;
-    compareAButton.setColour (juce::TextButton::buttonColourId, onA ? accentDim : metalDark);
-    compareAButton.setColour (juce::TextButton::textColourOffId, onA ? accent : textMuted);
-    compareBButton.setColour (juce::TextButton::buttonColourId, onA ? metalDark : accentDim);
-    compareBButton.setColour (juce::TextButton::textColourOffId, onA ? textMuted : accent);
+    compareAButton.setColour (juce::TextButton::buttonColourId, onA ? currentTheme->accentDim : currentTheme->metalDark);
+    compareAButton.setColour (juce::TextButton::textColourOffId, onA ? currentTheme->accent : currentTheme->textMuted);
+    compareBButton.setColour (juce::TextButton::buttonColourId, onA ? currentTheme->metalDark : currentTheme->accentDim);
+    compareBButton.setColour (juce::TextButton::textColourOffId, onA ? currentTheme->textMuted : currentTheme->accent);
 }
 
 void JJBreezeAudioProcessorEditor::updateBypassButtonColour()
 {
     const bool on = processorRef.isBypassed();
-    bypassButton.setColour (juce::TextButton::buttonColourId, on ? accentDim : metalDark);
-    bypassButton.setColour (juce::TextButton::textColourOffId, on ? accent : textMuted);
+    bypassButton.setColour (juce::TextButton::buttonColourId, on ? currentTheme->accentDim : currentTheme->metalDark);
+    bypassButton.setColour (juce::TextButton::textColourOffId, on ? currentTheme->accent : currentTheme->textMuted);
 }
 
 void JJBreezeAudioProcessorEditor::refreshPresetBox()
@@ -384,7 +448,7 @@ void JJBreezeAudioProcessorEditor::timerCallback()
     // "Modified" indicator: dim the preset picker's text once the live
     // patch no longer matches what the selected preset actually contains.
     const bool modified = ! processorRef.matchesNormalizedSnapshot (activePresetSnapshot);
-    presetBox.setColour (juce::ComboBox::textColourId, modified ? textMuted : ledText);
+    presetBox.setColour (juce::ComboBox::textColourId, modified ? currentTheme->textMuted : currentTheme->ledText);
 
     undoButton.setEnabled (processorRef.undoManager.canUndo());
     redoButton.setEnabled (processorRef.undoManager.canRedo());
@@ -394,11 +458,11 @@ void JJBreezeAudioProcessorEditor::drawScrew (juce::Graphics& g, juce::Point<flo
 {
     constexpr float r = 8.0f;
     const auto bounds = juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (centre);
-    juce::ColourGradient grad (metalLight, bounds.getX(), bounds.getY(),
-                                metalDark, bounds.getRight(), bounds.getBottom(), false);
+    juce::ColourGradient grad (currentTheme->metalLight, bounds.getX(), bounds.getY(),
+                                currentTheme->metalDark, bounds.getRight(), bounds.getBottom(), false);
     g.setGradientFill (grad);
     g.fillEllipse (bounds);
-    g.setColour (chassisBottom.withAlpha (0.8f));
+    g.setColour (currentTheme->chassisBottom.withAlpha (0.8f));
     g.drawEllipse (bounds, 1.4f);
     g.drawLine ({ centre.translated (-5.0f, 2.6f), centre.translated (5.0f, -2.6f) }, 1.8f);
 }
@@ -418,10 +482,11 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
 
-    // Dark brushed-metal chassis, lit from the top like a rack unit under
-    // studio lighting.
-    juce::ColourGradient backdrop (chassisTop, bounds.getCentreX(), bounds.getY(),
-                                    chassisBottom, bounds.getCentreX(), bounds.getBottom(), false);
+    // Chassis, lit from the top like a rack unit under studio lighting.
+    // Colours (and everything else below) come from currentTheme rather
+    // than a fixed palette — see applyTheme().
+    juce::ColourGradient backdrop (currentTheme->chassisTop, bounds.getCentreX(), bounds.getY(),
+                                    currentTheme->chassisBottom, bounds.getCentreX(), bounds.getBottom(), false);
     g.setGradientFill (backdrop);
     g.fillRect (bounds);
 
@@ -438,9 +503,9 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
     auto header = bounds.removeFromTop ((float) headerHeight);
     g.setColour (juce::Colours::black.withAlpha (0.18f));
     g.fillRect (header);
-    g.setColour (chassisBottom);
+    g.setColour (currentTheme->chassisBottom);
     g.drawHorizontalLine ((int) header.getBottom(), 0.0f, bounds.getWidth());
-    g.setColour (metalLight.withAlpha (0.15f));
+    g.setColour (currentTheme->metalLight.withAlpha (0.15f));
     g.drawHorizontalLine ((int) header.getBottom() - 1, 0.0f, bounds.getWidth());
 
     // Section panels - recessed metal cards that visually group each knob
@@ -449,16 +514,16 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
     auto drawSection = [&] (const juce::Label& label, const juce::Rectangle<int>& panelBounds)
     {
         auto pf = panelBounds.toFloat();
-        g.setColour (chassisBottom.withAlpha (0.6f));
+        g.setColour (currentTheme->chassisBottom.withAlpha (0.6f));
         g.fillRoundedRectangle (pf.translated (0.0f, 2.0f), 8.0f);
-        g.setColour (panelFill);
+        g.setColour (currentTheme->panelFill);
         g.fillRoundedRectangle (pf, 8.0f);
-        g.setColour (chassisBottom.withAlpha (0.9f));
+        g.setColour (currentTheme->chassisBottom.withAlpha (0.9f));
         g.drawRoundedRectangle (pf, 8.0f, 1.0f);
-        g.setColour (metalLight.withAlpha (0.1f));
+        g.setColour (currentTheme->metalLight.withAlpha (0.1f));
         g.drawLine (pf.getX() + 10.0f, pf.getY() + 1.0f, pf.getRight() - 10.0f, pf.getY() + 1.0f, 1.0f);
 
-        g.setColour (accent.withAlpha (0.5f));
+        g.setColour (currentTheme->accent.withAlpha (0.5f));
         g.drawHorizontalLine (label.getBottom() - 1, (float) label.getX(), (float) panelBounds.getRight());
     };
 
@@ -508,6 +573,9 @@ void JJBreezeAudioProcessorEditor::resized()
     compareAButton.setBounds (actionsRow.removeFromRight (28));
     actionsRow.removeFromRight (10);
     bypassButton.setBounds (actionsRow.removeFromRight (64));
+
+    // Theme picker takes whatever's left in the middle of the row.
+    themeBox.setBounds (actionsRow.withSizeKeepingCentre (juce::jmin (100, actionsRow.getWidth()), 22));
 
     area.removeFromTop (8); // gap before the knob sections
     area.removeFromLeft (outerPadding);
