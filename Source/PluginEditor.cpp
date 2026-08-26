@@ -212,14 +212,13 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     // UI isn't stuck too small on a hi-DPI/scaled display. Locked to the
     // design's own aspect ratio so knobs, panels and text all scale
     // together instead of the layout stretching oddly in one direction.
-    constexpr int defaultWidth = 480, defaultHeight = 664;
+    // A wide rack-panel shape - Shift/Vibrato/Warmth sit side by side as
+    // three columns (see resized()) rather than stacked as three rows,
+    // which used to make the window tall and narrow instead.
+    constexpr int defaultWidth = 920, defaultHeight = 460;
     setResizable (true, true);
     setResizeLimits (defaultWidth * 3 / 4, defaultHeight * 3 / 4, defaultWidth * 2, defaultHeight * 2);
     getConstrainer()->setFixedAspectRatio ((double) defaultWidth / (double) defaultHeight);
-    // Shrunk from 760 (which fit Shift, Slapback, Vibrato and Warmth) now
-    // that Slapback is gone - recomputed for three sections at the same
-    // per-row knob size as before, not just an arbitrary guess. Height grew
-    // by the preset/save/delete and undo/bypass/A-B rows added to the header.
     setSize (defaultWidth, defaultHeight);
 }
 
@@ -473,10 +472,11 @@ static constexpr int outerPadding = 20; // horizontal margin
 static constexpr int topPadding = 12;
 static constexpr int bottomPadding = 36; // extra clearance so the bottom corner screws stay visible
 static constexpr int sectionLabelHeight = 26;
-static constexpr int sectionGap = 14; // vertical gap between one section's card and the next
+static constexpr int columnGap = 16; // horizontal gap between the Shift/Vibrato/Warmth columns
 static constexpr int toggleWidth = 34;
-static constexpr int numSectionLabels = 3;    // Shift, Vibrato, Warmth each get one
-static constexpr int numSectionGaps = 2;      // gaps: Shift-Vibrato, Vibrato-Warmth
+static constexpr int numColumns = 3;
+static constexpr int numColumnGaps = 2; // gaps: Shift-Vibrato, Vibrato-Warmth
+static constexpr int maxKnobRows = 2; // the most any one column needs (Shift and Warmth both use 2)
 
 void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
 {
@@ -587,116 +587,69 @@ void JJBreezeAudioProcessorEditor::resized()
     const bool vibratoOn = processorRef.apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
     const bool warmthOn  = processorRef.apvts.getRawParameterValue (ParamIDs::warmthOn)->load()  > 0.5f;
 
-    const int shiftRows = shiftOn ? 2 : 0;
-    const int vibratoRows = vibratoOn ? 1 : 0;
-    const int warmthRows = warmthOn ? 1 : 0;
-    const int activeRows = juce::jmax (1, shiftRows + vibratoRows + warmthRows);
+    // Shift / Vibrato / Warmth sit side by side as three equal-width
+    // columns (a wide rack-panel layout) rather than stacked rows. Every
+    // column gets the same fixed row height, sized for the tallest column
+    // (Shift and Warmth both need two knob rows; Vibrato's single row just
+    // leaves the rest of its column's height empty below it) - so, unlike
+    // the old stacked layout, turning a section off doesn't hand its space
+    // to its neighbours (they're not sharing a vertical run any more), it
+    // just collapses that column to its label bar.
+    const int columnWidth = (area.getWidth() - numColumnGaps * columnGap) / numColumns;
+    const int rowHeight = (area.getHeight() - sectionLabelHeight) / maxKnobRows;
 
-    // Every section's label bar (with its toggle) always stays visible, so
-    // the user can always switch it back on. Only the knob rows collapse -
-    // and whatever height that frees up goes to sections still expanded, so
-    // e.g. Shift alone gets noticeably bigger knobs when Vibrato is off,
-    // rather than leaving dead space.
-    const int rowHeight = (area.getHeight() - numSectionLabels * sectionLabelHeight - numSectionGaps * sectionGap) / activeRows;
-
-    // SHIFT - pitch + delay rows (2 rows worth of height when on).
+    auto layoutColumn = [&] (juce::Rectangle<int> column, LedToggleButton& toggle, juce::Label& sectionLabel,
+                              bool on, juce::Rectangle<int>& panelBounds,
+                              std::initializer_list<std::initializer_list<LabelledKnob*>> rows)
     {
-        auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
+        auto fullLabelRow = column.removeFromTop (sectionLabelHeight);
         auto labelRow = fullLabelRow;
-        shiftToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 5));
+        toggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 5));
         labelRow.removeFromRight (6);
-        shiftSectionLabel.setBounds (labelRow);
+        sectionLabel.setBounds (labelRow);
 
-        pitchLKnob.setVisible (shiftOn);
-        pitchRKnob.setVisible (shiftOn);
-        focusKnob.setVisible (shiftOn);
-        delayLKnob.setVisible (shiftOn);
-        delayRKnob.setVisible (shiftOn);
-        mixKnob.setVisible (shiftOn);
+        for (auto& row : rows)
+            for (auto* knob : row)
+                knob->setVisible (on);
 
-        if (shiftOn)
+        if (! on)
         {
-            auto pitchRow = area.removeFromTop (rowHeight);
-            auto delayRow = area.removeFromTop (rowHeight);
-            shiftPanelBounds = fullLabelRow.getUnion (pitchRow).getUnion (delayRow).expanded (6, 4);
-
-            const int knobWidth = pitchRow.getWidth() / 3;
-            pitchLKnob.setBounds (pitchRow.removeFromLeft (knobWidth).reduced (10));
-            pitchRKnob.setBounds (pitchRow.removeFromLeft (knobWidth).reduced (10));
-            focusKnob.setBounds  (pitchRow.reduced (10));
-
-            delayLKnob.setBounds (delayRow.removeFromLeft (knobWidth).reduced (10));
-            delayRKnob.setBounds (delayRow.removeFromLeft (knobWidth).reduced (10));
-            mixKnob.setBounds    (delayRow.reduced (10));
+            panelBounds = fullLabelRow.expanded (6, 4);
+            return;
         }
-        else
+
+        auto usedRows = column;
+        for (auto& row : rows)
         {
-            shiftPanelBounds = fullLabelRow.expanded (6, 4);
+            auto rowArea = column.removeFromTop (rowHeight);
+            const int knobWidth = rowArea.getWidth() / (int) row.size();
+            for (size_t i = 0; i < row.size(); ++i)
+            {
+                auto* knob = *(row.begin() + (long) i);
+                // The last knob in the row takes whatever's left, absorbing
+                // any rounding remainder, rather than one more equal slice.
+                auto slot = (i + 1 == row.size()) ? rowArea : rowArea.removeFromLeft (knobWidth);
+                knob->setBounds (slot.reduced (8));
+            }
         }
-    }
+        usedRows.setHeight (rowHeight * (int) rows.size());
+        panelBounds = fullLabelRow.getUnion (usedRows).expanded (6, 4);
+    };
 
-    area.removeFromTop (sectionGap);
+    auto shiftColumn = area.removeFromLeft (columnWidth);
+    area.removeFromLeft (columnGap);
+    auto vibratoColumn = area.removeFromLeft (columnWidth);
+    area.removeFromLeft (columnGap);
+    auto warmthColumn = area; // takes whatever's left, absorbing rounding remainder
 
-    // VIBRATO - one row.
-    {
-        auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
-        auto labelRow = fullLabelRow;
-        vibratoToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 5));
-        labelRow.removeFromRight (6);
-        vibratoSectionLabel.setBounds (labelRow);
+    layoutColumn (shiftColumn, shiftToggle, shiftSectionLabel, shiftOn, shiftPanelBounds,
+                  { { &pitchLKnob, &pitchRKnob, &focusKnob }, { &delayLKnob, &delayRKnob, &mixKnob } });
 
-        vibratoRateKnob.setVisible (vibratoOn);
-        vibratoDepthKnob.setVisible (vibratoOn);
-        vibratoMixKnob.setVisible (vibratoOn);
+    layoutColumn (vibratoColumn, vibratoToggle, vibratoSectionLabel, vibratoOn, vibratoPanelBounds,
+                  { { &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob } });
 
-        if (vibratoOn)
-        {
-            auto vibratoRow = area.removeFromTop (rowHeight);
-            vibratoPanelBounds = fullLabelRow.getUnion (vibratoRow).expanded (6, 4);
-
-            const int knobWidth = vibratoRow.getWidth() / 3;
-            vibratoRateKnob.setBounds  (vibratoRow.removeFromLeft (knobWidth).reduced (10));
-            vibratoDepthKnob.setBounds (vibratoRow.removeFromLeft (knobWidth).reduced (10));
-            vibratoMixKnob.setBounds   (vibratoRow.reduced (10));
-        }
-        else
-        {
-            vibratoPanelBounds = fullLabelRow.expanded (6, 4);
-        }
-    }
-
-    area.removeFromTop (sectionGap);
-
-    // WARMTH - one row, takes whatever's left (absorbs any rounding
-    // remainder from the integer row-height division above).
-    {
-        auto fullLabelRow = area.removeFromTop (sectionLabelHeight);
-        auto labelRow = fullLabelRow;
-        warmthToggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 5));
-        labelRow.removeFromRight (6);
-        warmthSectionLabel.setBounds (labelRow);
-
-        warmthToneKnob.setVisible (warmthOn);
-        warmthDriveKnob.setVisible (warmthOn);
-        warmthBodyKnob.setVisible (warmthOn);
-        warmthMixKnob.setVisible (warmthOn);
-
-        if (warmthOn)
-        {
-            auto warmthRow = area;
-            warmthPanelBounds = fullLabelRow.getUnion (warmthRow).expanded (6, 4);
-
-            const int knobWidth = warmthRow.getWidth() / 4;
-            warmthToneKnob.setBounds  (warmthRow.removeFromLeft (knobWidth).reduced (10));
-            warmthDriveKnob.setBounds (warmthRow.removeFromLeft (knobWidth).reduced (10));
-            warmthBodyKnob.setBounds  (warmthRow.removeFromLeft (knobWidth).reduced (10));
-            warmthMixKnob.setBounds   (warmthRow.reduced (10));
-        }
-        else
-        {
-            warmthPanelBounds = fullLabelRow.expanded (6, 4);
-        }
-    }
+    layoutColumn (warmthColumn, warmthToggle, warmthSectionLabel, warmthOn, warmthPanelBounds,
+                  { { &warmthToneKnob, &warmthDriveKnob }, { &warmthBodyKnob, &warmthMixKnob } });
 
     // Version readout, centred in the bottom margin between the two bottom
     // corner screws — computed from the untouched full bounds rather than
