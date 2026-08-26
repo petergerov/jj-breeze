@@ -20,6 +20,11 @@ namespace GearPalette
         juce::Colour accent, accentDim;
         juce::Colour textLight, textMuted;
         juce::Colour ledBackground, ledText;
+        // Whether this theme's knob cap is a dark-metal disc (so the
+        // indicator pointer is painted in textLight to show up on it) or a
+        // light/cream one (so the pointer is painted in accent instead) —
+        // matches the design mockup's `dark` flag on its Knob component.
+        bool darkKnobCap;
     };
 
     // The plugin's original look (dark brushed-metal, amber accent) plus
@@ -33,28 +38,32 @@ namespace GearPalette
               juce::Colour (0xffd6d9de), juce::Colour (0xff8d9299), juce::Colour (0xff45484e),
               juce::Colour (0xffe08a3c), juce::Colour (0xff8a5628),
               juce::Colour (0xffe9e7e0), juce::Colour (0xff8b8e94),
-              juce::Colour (0xff0e0c0a), juce::Colour (0xffff9d4d) },
+              juce::Colour (0xff0e0c0a), juce::Colour (0xffff9d4d),
+              true },
 
             { "cream", "Cream",
               juce::Colour (0xffddd7c6), juce::Colour (0xffbfb79e), juce::Colour (0xffcfc8b3),
               juce::Colour (0xffefe9db), juce::Colour (0xffb9b09a), juce::Colour (0xff83795f),
               juce::Colour (0xff2c6b63), juce::Colour (0xff1c433d),
               juce::Colour (0xff2b2620), juce::Colour (0xff6f6554),
-              juce::Colour (0xff1a1712), juce::Colour (0xff6fc2b0) },
+              juce::Colour (0xff1a1712), juce::Colour (0xff6fc2b0),
+              false },
 
             { "olive", "Olive",
               juce::Colour (0xffdfe1c9), juce::Colour (0xffb7ba9c), juce::Colour (0xffc9cdb0),
               juce::Colour (0xffefe9db), juce::Colour (0xffb9b09a), juce::Colour (0xff83795f),
               juce::Colour (0xff2c6b63), juce::Colour (0xff1c433d),
               juce::Colour (0xff292a1f), juce::Colour (0xff66634f),
-              juce::Colour (0xff1a1712), juce::Colour (0xff6fc2b0) },
+              juce::Colour (0xff1a1712), juce::Colour (0xff6fc2b0),
+              false },
 
             { "slate", "Slate",
               juce::Colour (0xff51616a), juce::Colour (0xff2c363c), juce::Colour (0xff3a464e),
               juce::Colour (0xff7d8184), juce::Colour (0xff5c6164), juce::Colour (0xff2a2c2e),
               juce::Colour (0xffc9974a), juce::Colour (0xff7a5b2c),
               juce::Colour (0xfff2efe4), juce::Colour (0xffaab0ac),
-              juce::Colour (0xff1a1712), juce::Colour (0xffe0b876) },
+              juce::Colour (0xff1a1712), juce::Colour (0xffe0b876),
+              true },
         } };
         return themes;
     }
@@ -87,128 +96,120 @@ public:
     const GearPalette::Theme* theme = &GearPalette::defaultTheme();
     void setTheme (const GearPalette::Theme& t) { theme = &t; }
 
+    // Matches the design mockup's flat Knob component exactly: a knurled
+    // skirt ring, a rotating cap with a straight pointer + jewel tip, and a
+    // fixed 7-tick scale — all proportions are percentages of the knob's
+    // own diameter (as the mockup's CSS insets were), and the mockup's
+    // fixed-pixel details (pointer width, tick width, jewel size) are
+    // scaled from its 78px reference knob to whatever size this one is.
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                             float sliderPos, float rotaryStartAngle, float rotaryEndAngle,
                             juce::Slider& slider) override
     {
-        auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat().reduced (4.0f);
-        const auto radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
+        auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat();
+        const auto diameter = juce::jmin (bounds.getWidth(), bounds.getHeight());
+        const auto radius = diameter * 0.5f;
         const auto centre = bounds.getCentre();
         const auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
         const auto accentColour = slider.findColour (juce::Slider::rotarySliderFillColourId);
+        const auto pointerColour = theme->darkKnobCap ? theme->textLight : accentColour;
+        const float px = diameter / 78.0f; // scales the mockup's fixed-px details
 
-        // Printed scale ticks on the panel — static, don't rotate with the knob.
-        constexpr int numTicks = 11;
-        for (int i = 0; i < numTicks; ++i)
+        // Soft cast shadow behind the whole knob, like the mockup's
+        // `filter: drop-shadow` on its dial.
+        g.setColour (theme->chassisBottom.withAlpha (0.3f));
+        g.fillEllipse (juce::Rectangle<float> (diameter, diameter).withCentre (centre.translated (2.0f * px, 3.0f * px)));
+
+        // Fixed 7-tick scale (-135/-90/-45/0/45/90/135) — printed on the
+        // panel, doesn't rotate with the knob. Majors are the same length
+        // as minors, just thicker/brighter, matching the mockup.
+        for (int i = 0; i < 7; ++i)
         {
-            const auto t = (float) i / (float) (numTicks - 1);
+            const auto t = (float) i / 6.0f;
             const auto tickAngle = rotaryStartAngle + t * (rotaryEndAngle - rotaryStartAngle);
-            const bool major = (i == 0 || i == numTicks - 1 || i == numTicks / 2);
-            const juce::Point<float> inner (centre.x + (radius * 0.88f) * std::sin (tickAngle),
-                                             centre.y - (radius * 0.88f) * std::cos (tickAngle));
-            const juce::Point<float> outer (centre.x + radius * std::sin (tickAngle),
-                                             centre.y - radius * std::cos (tickAngle));
-            g.setColour (theme->textMuted.withAlpha (major ? 0.85f : 0.45f));
-            g.drawLine ({ inner, outer }, major ? 1.6f : 1.0f);
+            const bool major = (i % 3) == 0; // 0, 3, 6 -> the -135/0/135 ticks
+            const juce::Point<float> outer (centre.x + radius * 0.99f * std::sin (tickAngle),
+                                             centre.y - radius * 0.99f * std::cos (tickAngle));
+            const juce::Point<float> inner (centre.x + radius * 0.89f * std::sin (tickAngle),
+                                             centre.y - radius * 0.89f * std::cos (tickAngle));
+            g.setColour (major ? theme->textLight.withAlpha (0.85f) : theme->textMuted.withAlpha (0.5f));
+            g.drawLine ({ inner, outer }, (major ? 2.6f : 2.0f) * px);
         }
 
-        // Value arc — thin printed track with an amber fill, like a
-        // hardware gain-reduction scale rather than a glowing progress ring.
-        const auto arcRadius = radius * 0.82f;
-        juce::Path track;
-        track.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f, rotaryStartAngle, rotaryEndAngle, true);
-        g.setColour (theme->metalDark.withAlpha (0.9f));
-        g.strokePath (track, juce::PathStrokeType (2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-        juce::Path valueArc;
-        valueArc.addCentredArc (centre.x, centre.y, arcRadius, arcRadius, 0.0f, rotaryStartAngle, angle, true);
-        g.setColour (accentColour);
-        g.strokePath (valueArc, juce::PathStrokeType (2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-        // A real hardware pot knob reads as two pieces: a knurled skirt
-        // (the moulded base, gripped to turn) topped by a slightly smaller,
-        // brighter cap that carries the indicator line — rather than one
-        // flat disc.
-        const auto skirtRadius = radius * 0.66f;
-        const auto capRadius   = skirtRadius * 0.80f;
-
-        // Cast shadow grounding the knob on the panel.
-        g.setColour (theme->chassisBottom.withAlpha (0.55f));
-        g.fillEllipse (juce::Rectangle<float> (skirtRadius * 2.0f, skirtRadius * 2.0f)
-                            .withCentre (centre.translated (1.5f, 2.5f)));
-
-        // Skirt — dark gunmetal, lit from the upper-left.
-        const juce::Rectangle<float> skirtBounds (centre.x - skirtRadius, centre.y - skirtRadius,
-                                                    skirtRadius * 2.0f, skirtRadius * 2.0f);
-        juce::ColourGradient skirtGrad (theme->metalMid, centre.x - skirtRadius * 0.5f, centre.y - skirtRadius * 0.6f,
-                                         theme->chassisBottom, centre.x + skirtRadius * 0.6f, centre.y + skirtRadius * 0.7f, false);
+        // Skirt (inset 13% each side -> 74% of the knob's diameter).
+        const auto skirtRadius = radius * 0.74f;
+        const juce::Rectangle<float> skirtBounds (juce::Rectangle<float> (skirtRadius * 2.0f, skirtRadius * 2.0f).withCentre (centre));
+        juce::ColourGradient skirtGrad (theme->metalMid, centre.x - skirtRadius * 0.32f, centre.y - skirtRadius * 0.44f,
+                                         theme->chassisBottom, centre.x, centre.y, true);
         g.setGradientFill (skirtGrad);
         g.fillEllipse (skirtBounds);
-        g.setColour (theme->chassisBottom.withAlpha (0.9f));
-        g.drawEllipse (skirtBounds, 1.2f);
 
-        // Knurled grip ridges around the skirt — rotate with the knob,
-        // since they're moulded into the knob body itself.
-        {
-            juce::Graphics::ScopedSaveState save (g);
-            g.addTransform (juce::AffineTransform::rotation (angle, centre.x, centre.y));
-            constexpr int numRidges = 28;
-            for (int i = 0; i < numRidges; ++i)
-            {
-                const auto ridgeAngle = (float) i / (float) numRidges * juce::MathConstants<float>::twoPi;
-                const juce::Point<float> inner (centre.x + skirtRadius * 0.84f * std::sin (ridgeAngle),
-                                                 centre.y - skirtRadius * 0.84f * std::cos (ridgeAngle));
-                const juce::Point<float> outer (centre.x + skirtRadius * 0.97f * std::sin (ridgeAngle),
-                                                 centre.y - skirtRadius * 0.97f * std::cos (ridgeAngle));
-                g.setColour (theme->chassisBottom.withAlpha (0.6f));
-                g.drawLine ({ inner, outer }, 1.1f);
-            }
-        }
-
-        // Cap — brighter brushed aluminium, domed, sitting on top of the skirt.
-        const juce::Rectangle<float> capBounds (centre.x - capRadius, centre.y - capRadius,
-                                                  capRadius * 2.0f, capRadius * 2.0f);
+        // Cap (inset 17% of the skirt -> 66% of the skirt's diameter),
+        // rotating with the knob's value.
+        const auto capRadius = skirtRadius * 0.66f;
+        const juce::Rectangle<float> capBounds (juce::Rectangle<float> (capRadius * 2.0f, capRadius * 2.0f).withCentre (centre));
         juce::ColourGradient capGrad (theme->metalLight, centre.x - capRadius * 0.5f, centre.y - capRadius * 0.6f,
                                        theme->metalDark, centre.x + capRadius * 0.6f, centre.y + capRadius * 0.7f, false);
         g.setGradientFill (capGrad);
-        g.fillEllipse (capBounds);
-        g.setColour (theme->chassisBottom.withAlpha (0.85f));
-        g.drawEllipse (capBounds, 1.0f);
-
-        // Specular highlight — a soft glint that sells the dome.
         {
-            const auto glintCentre = centre.translated (-capRadius * 0.32f, -capRadius * 0.38f);
-            juce::ColourGradient glintGrad (juce::Colours::white.withAlpha (0.5f), glintCentre.x, glintCentre.y,
-                                             juce::Colours::white.withAlpha (0.0f), glintCentre.x, glintCentre.y + capRadius * 0.7f, true);
-            g.setGradientFill (glintGrad);
-            g.fillEllipse (juce::Rectangle<float> (capRadius * 1.1f, capRadius * 0.85f).withCentre (glintCentre));
+            juce::Graphics::ScopedSaveState save (g);
+            g.addTransform (juce::AffineTransform::rotation (angle, centre.x, centre.y));
+            g.fillEllipse (capBounds);
         }
 
-        // Painted indicator line with a bright jewel tip, like the
-        // white/orange stripe (and inset marker) on a hardware pot knob.
-        juce::Path pointer;
-        const float pointerLength = capRadius * 0.82f;
-        const float pointerThickness = 2.6f;
-        pointer.addRoundedRectangle (-pointerThickness * 0.5f, -pointerLength,
-                                      pointerThickness, pointerLength * 0.62f, pointerThickness * 0.5f);
+        // Pointer + jewel tip, in the cap's local (unrotated) frame — a
+        // short bar in the cap's upper half plus a small dot just past its
+        // outer end, then both rotated together with the cap's value angle.
         auto pointerTransform = juce::AffineTransform::rotation (angle).translated (centre);
-        g.setColour (theme->chassisBottom.withAlpha (0.5f));
-        g.fillPath (pointer, pointerTransform.translated (0.6f, 0.6f));
-        g.setColour (accentColour);
+
+        juce::Path pointer;
+        const float pointerWidth = 3.0f * px;
+        const float pointerNear = -0.32f * capRadius, pointerFar = -0.8f * capRadius;
+        pointer.addRoundedRectangle (-pointerWidth * 0.5f, pointerFar, pointerWidth, pointerNear - pointerFar, pointerWidth * 0.4f);
+        g.setColour (pointerColour);
         g.fillPath (pointer, pointerTransform);
 
-        const auto jewel = juce::Point<float> (0.0f, -pointerLength).transformedBy (pointerTransform);
-        g.setColour (accentColour.brighter (0.5f));
-        g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre (jewel));
+        const auto jewel = juce::Point<float> (0.0f, -0.84f * capRadius).transformedBy (pointerTransform);
+        const float jewelDiameter = 5.0f * px;
+        g.setColour (accentColour.withAlpha (0.55f));
+        g.fillEllipse (juce::Rectangle<float> (jewelDiameter * 2.4f, jewelDiameter * 2.4f).withCentre (jewel));
+        g.setColour (accentColour);
+        g.fillEllipse (juce::Rectangle<float> (jewelDiameter, jewelDiameter).withCentre (jewel));
+    }
 
-        // Centre hub with a screwdriver slot.
-        const auto hub = juce::Rectangle<float> (7.0f, 7.0f).withCentre (centre);
-        juce::ColourGradient hubGrad (theme->metalMid, hub.getX(), hub.getY(),
-                                       theme->chassisBottom, hub.getRight(), hub.getBottom(), false);
-        g.setGradientFill (hubGrad);
-        g.fillEllipse (hub);
-        g.setColour (theme->chassisBottom);
-        g.drawLine ({ hub.getCentre().translated (-2.2f, -1.0f), hub.getCentre().translated (2.2f, 1.0f) }, 1.0f);
+    // The numeric readout under each knob (a Slider's built-in text box) —
+    // restyled as the mockup's small dark LCD-style "chip" (monospace
+    // digits, tight rounded pill) rather than LookAndFeel_V4's plain
+    // rectangle, and tagged by name so drawLabel() below can tell it apart
+    // from every other Label in the editor (title, captions, section
+    // headings) without touching their look.
+    juce::Label* createSliderTextBox (juce::Slider& slider) override
+    {
+        auto* l = LookAndFeel_V4::createSliderTextBox (slider);
+        l->setName ("knobValueChip");
+        l->setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 10.5f, juce::Font::bold)));
+        l->setBorderSize (juce::BorderSize<int> (1, 4, 1, 4));
+        return l;
+    }
+
+    void drawLabel (juce::Graphics& g, juce::Label& label) override
+    {
+        if (label.getName() != "knobValueChip")
+        {
+            LookAndFeel_V4::drawLabel (g, label);
+            return;
+        }
+
+        auto bounds = label.getLocalBounds().toFloat();
+        g.setColour (label.findColour (juce::Label::backgroundColourId));
+        g.fillRoundedRectangle (bounds, 3.0f);
+
+        if (! label.isBeingEdited())
+        {
+            g.setColour (label.findColour (juce::Label::textColourId));
+            g.setFont (label.getFont());
+            g.drawFittedText (label.getText(), label.getLocalBounds(), label.getJustificationType(), 1);
+        }
     }
 
     // Tooltips, styled and sized: the default LookAndFeel wraps at 400px,
@@ -288,36 +289,55 @@ public:
     const GearPalette::Theme* theme = &GearPalette::defaultTheme();
     void setTheme (const GearPalette::Theme& t) { theme = &t; repaint(); }
 
+    // Matches the design mockup's Toggle component: a small vertical slot
+    // with a lever that sits at the top (on) or bottom (off), glowing
+    // accent-coloured when on — a physical rocker/slide switch, not an
+    // illuminated pushbutton. Fit to whatever bounds this button is given,
+    // at the mockup's 17:30 slot aspect ratio.
     void paintButton (juce::Graphics& g, bool isMouseOverButton, bool isButtonDown) override
     {
-        auto bounds = getLocalBounds().toFloat().reduced (0.5f);
+        auto full = getLocalBounds().toFloat();
+        constexpr float slotAspect = 17.0f / 30.0f; // width / height
+        float slotHeight = full.getHeight();
+        float slotWidth = slotHeight * slotAspect;
+        if (slotWidth > full.getWidth())
+        {
+            slotWidth = full.getWidth();
+            slotHeight = slotWidth / slotAspect;
+        }
+        const auto slot = juce::Rectangle<float> (slotWidth, slotHeight).withCentre (full.getCentre());
         const bool on = getToggleState();
 
-        juce::ColourGradient housingGrad (theme->metalMid, bounds.getX(), bounds.getY(),
-                                           theme->chassisBottom, bounds.getRight(), bounds.getBottom(), false);
-        g.setGradientFill (housingGrad);
-        g.fillRoundedRectangle (bounds, bounds.getHeight() * 0.5f);
-        g.setColour (theme->chassisBottom.withAlpha (0.9f));
-        g.drawRoundedRectangle (bounds, bounds.getHeight() * 0.5f, 1.0f);
+        juce::ColourGradient slotGrad (theme->ledBackground.brighter (0.1f), slot.getX(), slot.getY(),
+                                        theme->chassisBottom, slot.getX(), slot.getBottom(), false);
+        g.setGradientFill (slotGrad);
+        g.fillRoundedRectangle (slot, slotWidth * 0.18f);
 
-        const auto ledCentre = bounds.getCentre();
-        const float ledRadius = bounds.getHeight() * 0.26f;
+        // The lever's own colour is fixed cream metal regardless of theme
+        // (same as the mockup, which never themes it) - only its glow when
+        // on picks up the theme's accent.
+        const float margin = slotWidth * 0.15f;
+        const float leverWidth = slotWidth - margin * 2.0f;
+        const float leverHeight = slotHeight * 0.43f;
+        const float leverTop = on ? slotHeight * 0.08f : slotHeight * (1.0f - 0.43f - 0.08f);
+        const auto lever = juce::Rectangle<float> (leverWidth, leverHeight)
+                                .withPosition (slot.getX() + margin, slot.getY() + leverTop);
 
         if (on)
         {
-            g.setColour (theme->accent.withAlpha (0.30f));
-            g.fillEllipse (juce::Rectangle<float> (ledRadius * 3.6f, ledRadius * 3.6f).withCentre (ledCentre));
+            g.setColour (theme->accent.withAlpha (isButtonDown ? 0.55f : 0.4f));
+            g.fillRoundedRectangle (lever.expanded (slotWidth * 0.28f), leverHeight * 0.5f);
         }
 
-        g.setColour (on ? theme->accent : juce::Colour (0xff35342f));
-        g.fillEllipse (juce::Rectangle<float> (ledRadius * 2.0f, ledRadius * 2.0f).withCentre (ledCentre));
-        g.setColour (theme->chassisBottom.withAlpha (0.7f));
-        g.drawEllipse (juce::Rectangle<float> (ledRadius * 2.0f, ledRadius * 2.0f).withCentre (ledCentre), 0.8f);
+        juce::ColourGradient leverGrad (juce::Colour (0xffefe9db), lever.getX(), lever.getY(),
+                                         juce::Colour (0xffa9a08c), lever.getRight(), lever.getBottom(), false);
+        g.setGradientFill (leverGrad);
+        g.fillRoundedRectangle (lever, leverWidth * 0.2f);
 
         if (isMouseOverButton)
         {
-            g.setColour (juce::Colours::white.withAlpha (isButtonDown ? 0.14f : 0.07f));
-            g.fillRoundedRectangle (bounds, bounds.getHeight() * 0.5f);
+            g.setColour (juce::Colours::white.withAlpha (isButtonDown ? 0.1f : 0.05f));
+            g.fillRoundedRectangle (slot, slotWidth * 0.18f);
         }
     }
 };
@@ -398,7 +418,9 @@ public:
                   const juce::String& tooltip)
     {
         slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-        slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 72, 20);
+        // A tight LCD-style chip rather than a full-width box — see
+        // RetroLookAndFeel::createSliderTextBox()/drawLabel().
+        slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 60, 15);
         slider.setTooltip (tooltip);
         addAndMakeVisible (slider);
 
@@ -479,7 +501,10 @@ public:
 private:
     void setUpSectionLabel (juce::Label& label, const juce::String& text);
     void setUpToggle (LedToggleButton& button, const juce::String& tooltip);
-    void drawScrew (juce::Graphics& g, juce::Point<float> centre) const;
+    // A single rack-mount bolt, like the ones in the rack ears' left/right
+    // strips (see paint()) - matches the design mockup's flat radial-
+    // gradient bolt exactly, no screwdriver slot.
+    void drawBolt (juce::Graphics& g, juce::Point<float> centre, float radius) const;
 
     // Leaves the slot being switched away from holding whatever the user
     // last tweaked (so it isn't lost), makes a first-time target slot start
@@ -487,7 +512,7 @@ private:
     // recalls the target slot and updates which A/B button reads as active.
     void switchCompareSlot (int targetSlot);
     void updateCompareButtonColours();
-    void updateBypassButtonColour();
+    void updateBypassToggleState();
 
     // Switches the whole panel's colourway: updates currentTheme, hands it
     // to every child that draws with one (the LookAndFeel, both toggle
@@ -504,6 +529,9 @@ private:
     // "Save current as..." — prompts for a name via a small modal dialog,
     // then writes it to disk and selects it.
     void promptAndSaveUserPreset();
+    // Confirms via a modal dialog (deletion isn't undoable) before actually
+    // deleting the selected user preset.
+    void promptAndDeleteUserPreset();
 
     // Bonus for the Standalone build, which has no host-supplied Edit menu
     // of its own; harmless (and likely just inert) when hosted in a DAW,
@@ -529,8 +557,8 @@ private:
     // The colourway every themed component below currently draws with —
     // points into GearPalette::allThemes()'s static storage (permanent for
     // the plugin's lifetime), reassigned by applyTheme(). Read directly by
-    // this editor's own paint()/drawScrew()/updateCompareButtonColours()/
-    // updateBypassButtonColour()/setUpSectionLabel(); everything else
+    // this editor's own paint()/drawBolt()/updateCompareButtonColours()/
+    // updateBypassToggleState()/setUpSectionLabel(); everything else
     // (RetroLookAndFeel, LedToggleButton, UndoRedoButton, LabelledKnob)
     // keeps its own copy of the pointer via setTheme()/applyTheme().
     const GearPalette::Theme* currentTheme = &GearPalette::defaultTheme();
@@ -542,9 +570,13 @@ private:
     // as a tooltip; owns no visible bounds of its own.
     juce::TooltipWindow tooltipWindow { this, 500 };
 
+    // Nameplate: an italic serif wordmark plus a small tracked-caps
+    // subtitle, sharing one baseline, left-aligned - see resized() and the
+    // design mockup this matches.
     juce::Label titleLabel;
-    // Tiny build-info readout in the bottom margin, next to the corner
-    // screws — just enough to tell which build you're looking at without
+    juce::Label subtitleLabel;
+    // Tiny build-info readout in the bottom margin, next to the rack-ear
+    // bolts — just enough to tell which build you're looking at without
     // competing visually with the header. setStateInformation() presets
     // don't carry a version, so this is the only place it shows at all.
     juce::Label versionLabel;
@@ -572,9 +604,15 @@ private:
     // Undo/redo — see JJBreezeAudioProcessor::undoManager.
     UndoRedoButton undoButton { false }, redoButton { true };
 
-    // Forces all three sections off — the untouched dry signal — without
-    // disturbing any knob or which sections were individually on.
-    juce::TextButton bypassButton { "BYPASS" };
+    // Labelled POWER in the header — on = processing normally, off =
+    // bypassed (forces all three sections off, the untouched dry signal,
+    // without disturbing any knob or which sections were individually on).
+    // Drawn state is the *inverse* of processorRef.isBypassed() (a power
+    // switch reads on when active); not a click-toggling button, see
+    // updateBypassToggleState(). Sits in the header on the same row as the
+    // nameplate, like the design mockup's POWER switch.
+    LedToggleButton bypassButton;
+    juce::Label bypassCaptionLabel;
 
     // A/B compare — see JJBreezeAudioProcessor::storeCompareSnapshot/recallCompareSnapshot.
     juce::TextButton compareAButton { "A" }, compareBButton { "B" };
@@ -583,9 +621,6 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> shiftToggleAttachment,
         vibratoToggleAttachment, warmthToggleAttachment;
     bool shiftWasOn = true, vibratoWasOn = false, warmthWasOn = false;
-
-    // Panel backgrounds drawn behind each group of knobs.
-    juce::Rectangle<int> shiftPanelBounds, vibratoPanelBounds, warmthPanelBounds;
 
     LabelledKnob pitchLKnob, pitchRKnob, delayLKnob, delayRKnob, focusKnob, mixKnob;
     LabelledKnob vibratoRateKnob, vibratoDepthKnob, vibratoMixKnob;

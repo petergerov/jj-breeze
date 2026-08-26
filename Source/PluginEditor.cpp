@@ -49,12 +49,20 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
 
     setLookAndFeel (&retroLookAndFeel);
 
-    titleLabel.setText ("J.J.BREEZE", juce::dontSendNotification);
-    titleLabel.setFont (juce::Font (juce::FontOptions ("Avenir Next Condensed", 24.0f, juce::Font::bold))
-                             .withExtraKerningFactor (0.05f));
+    // Nameplate: an italic serif wordmark ("j.j.breeze") with a small
+    // tracked-caps subtitle sharing its baseline, left-aligned - matches
+    // the design mockup's brand plate.
+    titleLabel.setText ("j.j.breeze", juce::dontSendNotification);
+    titleLabel.setFont (juce::Font (juce::FontOptions ("Georgia", 22.0f, juce::Font::italic | juce::Font::bold)));
     titleLabel.setColour (juce::Label::textColourId, currentTheme->textLight);
-    titleLabel.setJustificationType (juce::Justification::centred);
+    titleLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (titleLabel);
+
+    subtitleLabel.setText ("STEREO MICRO-PITCH WIDENER", juce::dontSendNotification);
+    subtitleLabel.setFont (juce::Font (juce::FontOptions (9.5f, juce::Font::bold)).withExtraKerningFactor (0.2f));
+    subtitleLabel.setColour (juce::Label::textColourId, currentTheme->textMuted);
+    subtitleLabel.setJustificationType (juce::Justification::centredLeft);
+    addAndMakeVisible (subtitleLabel);
 
     versionLabel.setText ("v" JucePlugin_VersionString, juce::dontSendNotification);
     versionLabel.setFont (juce::Font (juce::FontOptions (9.5f, juce::Font::plain)).withExtraKerningFactor (0.03f));
@@ -142,17 +150,28 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
 
-    // Bypass - forces all three sections off (the untouched dry signal)
-    // without touching any knob or which sections were individually on.
-    bypassButton.setTooltip ("Bypass all processing - output the untouched dry signal without changing any knob or section state.");
+    // POWER switch - drives processorRef's bypass flag, but shown the
+    // opposite way round from it (on = powered/processing, off = bypassed,
+    // the untouched dry signal) since that's what a power switch means.
+    // A switch (see LedToggleButton), not a click-toggling button - its
+    // drawn state always comes from processorRef.isBypassed() via
+    // updateBypassToggleState(), same idea as the section on/off switches
+    // but with no apvts parameter of its own to attach to.
+    bypassButton.setTooltip ("Power off to bypass all processing (the untouched dry signal) without changing any knob or section state; power back on to resume.");
     bypassButton.setClickingTogglesState (false);
     bypassButton.onClick = [this]
     {
         processorRef.setBypassed (! processorRef.isBypassed());
-        updateBypassButtonColour();
+        updateBypassToggleState();
     };
     addAndMakeVisible (bypassButton);
-    updateBypassButtonColour();
+    updateBypassToggleState();
+
+    bypassCaptionLabel.setText ("POWER", juce::dontSendNotification);
+    bypassCaptionLabel.setFont (juce::Font (juce::FontOptions (10.5f, juce::Font::bold)).withExtraKerningFactor (0.14f));
+    bypassCaptionLabel.setColour (juce::Label::textColourId, currentTheme->accent);
+    bypassCaptionLabel.setJustificationType (juce::Justification::centredRight);
+    addAndMakeVisible (bypassCaptionLabel);
 
     // A/B compare - see JJBreezeAudioProcessor::storeCompareSnapshot/recallCompareSnapshot.
     compareAButton.setTooltip ("Compare slot A. Switching away stores your current tweaks here first.");
@@ -274,6 +293,8 @@ void JJBreezeAudioProcessorEditor::applyTheme (const juce::String& themeId)
     shiftToggle.setTheme (*currentTheme);
     vibratoToggle.setTheme (*currentTheme);
     warmthToggle.setTheme (*currentTheme);
+    bypassButton.setTheme (*currentTheme);
+    bypassCaptionLabel.setColour (juce::Label::textColourId, currentTheme->accent);
     undoButton.setTheme (*currentTheme);
     redoButton.setTheme (*currentTheme);
 
@@ -283,6 +304,7 @@ void JJBreezeAudioProcessorEditor::applyTheme (const juce::String& themeId)
         knob->applyTheme (*currentTheme);
 
     titleLabel.setColour (juce::Label::textColourId, currentTheme->textLight);
+    subtitleLabel.setColour (juce::Label::textColourId, currentTheme->textMuted);
     versionLabel.setColour (juce::Label::textColourId, currentTheme->textMuted.withAlpha (0.55f));
     for (auto* label : { &shiftSectionLabel, &vibratoSectionLabel, &warmthSectionLabel })
         label->setColour (juce::Label::textColourId, currentTheme->accent);
@@ -298,7 +320,7 @@ void JJBreezeAudioProcessorEditor::applyTheme (const juce::String& themeId)
     themeBox.setColour (juce::ComboBox::arrowColourId, currentTheme->accent);
 
     updateCompareButtonColours();
-    updateBypassButtonColour();
+    updateBypassToggleState();
     repaint();
 }
 
@@ -311,11 +333,13 @@ void JJBreezeAudioProcessorEditor::updateCompareButtonColours()
     compareBButton.setColour (juce::TextButton::textColourOffId, onA ? currentTheme->textMuted : currentTheme->accent);
 }
 
-void JJBreezeAudioProcessorEditor::updateBypassButtonColour()
+void JJBreezeAudioProcessorEditor::updateBypassToggleState()
 {
-    const bool on = processorRef.isBypassed();
-    bypassButton.setColour (juce::TextButton::buttonColourId, on ? currentTheme->accentDim : currentTheme->metalDark);
-    bypassButton.setColour (juce::TextButton::textColourOffId, on ? currentTheme->accent : currentTheme->textMuted);
+    // Inverted from the underlying flag - see the comment on bypassButton's
+    // setup. Not a click-toggling button (bypass can also change from
+    // outside a click on this switch - see timerCallback()), so its drawn
+    // state is always synced from the actual bypass flag rather than assumed.
+    bypassButton.setToggleState (! processorRef.isBypassed(), juce::dontSendNotification);
 }
 
 void JJBreezeAudioProcessorEditor::refreshPresetBox()
@@ -425,7 +449,7 @@ void JJBreezeAudioProcessorEditor::timerCallback()
     if (processorRef.isBypassed() && (shiftOn || vibratoOn || warmthOn))
     {
         processorRef.clearBypassedFlag();
-        updateBypassButtonColour();
+        updateBypassToggleState();
     }
 
     // The current program can also change from outside this editor - the
@@ -453,25 +477,27 @@ void JJBreezeAudioProcessorEditor::timerCallback()
     redoButton.setEnabled (processorRef.undoManager.canRedo());
 }
 
-void JJBreezeAudioProcessorEditor::drawScrew (juce::Graphics& g, juce::Point<float> centre) const
+void JJBreezeAudioProcessorEditor::drawBolt (juce::Graphics& g, juce::Point<float> centre, float radius) const
 {
-    constexpr float r = 8.0f;
-    const auto bounds = juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (centre);
-    juce::ColourGradient grad (currentTheme->metalLight, bounds.getX(), bounds.getY(),
-                                currentTheme->metalDark, bounds.getRight(), bounds.getBottom(), false);
+    const auto bounds = juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (centre);
+    juce::ColourGradient grad (currentTheme->metalLight, centre.x - radius * 0.3f, centre.y - radius * 0.4f,
+                                currentTheme->metalDark, centre.x, centre.y, true);
     g.setGradientFill (grad);
     g.fillEllipse (bounds);
-    g.setColour (currentTheme->chassisBottom.withAlpha (0.8f));
-    g.drawEllipse (bounds, 1.4f);
-    g.drawLine ({ centre.translated (-5.0f, 2.6f), centre.translated (5.0f, -2.6f) }, 1.8f);
+    g.setColour (currentTheme->chassisBottom.withAlpha (0.5f));
+    g.drawEllipse (bounds, 1.0f);
 }
 
-// Shared with resized() so panels, rules and knob rows all land in the same place.
+// Shared with resized() so the header, dividers, ears and knob columns all
+// land in exactly the same place — see the mockup this matches.
 static constexpr int headerHeight = 112; // title + preset/save/delete row + undo/bypass/A-B row
-static constexpr int outerPadding = 20; // horizontal margin
+static constexpr int earWidth = 44; // rack-ear side strips (see paint())
+static constexpr int contentGutter = 16; // gap between an ear and the content it flanks
+static constexpr int sideMargin = earWidth + contentGutter;
 static constexpr int topPadding = 12;
-static constexpr int bottomPadding = 36; // extra clearance so the bottom corner screws stay visible
-static constexpr int sectionLabelHeight = 26;
+static constexpr int footerStripHeight = 18;
+static constexpr int bottomPadding = 14; // clearance above the footer strip
+static constexpr int sectionLabelHeight = 34; // taller than a text row alone needs, so the section on/off switches (below) have real room
 static constexpr int columnGap = 16; // horizontal gap between the Shift/Vibrato/Warmth columns
 static constexpr int toggleWidth = 34;
 static constexpr int numColumns = 3;
@@ -480,7 +506,8 @@ static constexpr int maxKnobRows = 2; // the most any one column needs (Shift an
 
 void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat();
+    const auto full = getLocalBounds().toFloat();
+    auto bounds = full;
 
     // Chassis, lit from the top like a rack unit under studio lighting.
     // Colours (and everything else below) come from currentTheme rather
@@ -498,57 +525,88 @@ void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawHorizontalLine ((int) ly, 0.0f, bounds.getWidth());
     }
 
+    // Rack ears — full-height side strips carrying two mounting bolts
+    // each, matching the design mockup exactly (replaces the old four
+    // corner screws).
+    auto drawEar = [&] (const juce::Rectangle<float>& ear)
+    {
+        juce::ColourGradient earGrad (currentTheme->metalMid, ear.getX(), ear.getY(),
+                                       currentTheme->metalDark, ear.getX(), ear.getBottom(), false);
+        g.setGradientFill (earGrad);
+        g.fillRect (ear);
+
+        const float boltRadius = (float) earWidth * 0.17f;
+        drawBolt (g, { ear.getCentreX(), ear.getY() + ear.getHeight() * 0.28f }, boltRadius);
+        drawBolt (g, { ear.getCentreX(), ear.getY() + ear.getHeight() * 0.72f }, boltRadius);
+    };
+    drawEar ({ full.getX(), full.getY(), (float) earWidth, full.getHeight() });
+    drawEar ({ full.getRight() - (float) earWidth, full.getY(), (float) earWidth, full.getHeight() });
+
     // Header strip with a machined seam underneath (a light line over a
     // dark one, like a panel edge catching the light).
     auto header = bounds.removeFromTop ((float) headerHeight);
     g.setColour (juce::Colours::black.withAlpha (0.18f));
     g.fillRect (header);
-    g.setColour (currentTheme->chassisBottom);
-    g.drawHorizontalLine ((int) header.getBottom(), 0.0f, bounds.getWidth());
-    g.setColour (currentTheme->metalLight.withAlpha (0.15f));
-    g.drawHorizontalLine ((int) header.getBottom() - 1, 0.0f, bounds.getWidth());
 
-    // Section panels - recessed metal cards that visually group each knob
-    // row (or, when the section's toggle is off, just its collapsed
-    // header bar).
-    auto drawSection = [&] (const juce::Label& label, const juce::Rectangle<int>& panelBounds)
+    // One thin divider under the header, then two more between the three
+    // knob columns — flat hairlines rather than rounded cards, matching
+    // the mockup. Same inset/removal amounts as resized() so these always
+    // land exactly between the knob columns they're separating.
+    auto content = bounds.reduced ((float) sideMargin, 0.0f);
+    content.removeFromTop (8.0f);
+    g.setColour (currentTheme->textLight.withAlpha (0.14f));
+    g.drawHorizontalLine ((int) content.getY(), content.getX(), content.getRight());
+
+    content.removeFromTop ((float) topPadding);
+    content.removeFromBottom ((float) (bottomPadding + footerStripHeight));
+    const float columnWidthF = (content.getWidth() - (float) (numColumnGaps * columnGap)) / (float) numColumns;
+    for (int i = 1; i < numColumns; ++i)
     {
-        auto pf = panelBounds.toFloat();
-        g.setColour (currentTheme->chassisBottom.withAlpha (0.6f));
-        g.fillRoundedRectangle (pf.translated (0.0f, 2.0f), 8.0f);
-        g.setColour (currentTheme->panelFill);
-        g.fillRoundedRectangle (pf, 8.0f);
-        g.setColour (currentTheme->chassisBottom.withAlpha (0.9f));
-        g.drawRoundedRectangle (pf, 8.0f, 1.0f);
-        g.setColour (currentTheme->metalLight.withAlpha (0.1f));
-        g.drawLine (pf.getX() + 10.0f, pf.getY() + 1.0f, pf.getRight() - 10.0f, pf.getY() + 1.0f, 1.0f);
+        const float x = content.getX() + (float) i * columnWidthF + ((float) i - 0.5f) * (float) columnGap;
+        g.drawVerticalLine ((int) x, content.getY(), content.getBottom());
+    }
 
-        g.setColour (currentTheme->accent.withAlpha (0.5f));
-        g.drawHorizontalLine (label.getBottom() - 1, (float) label.getX(), (float) panelBounds.getRight());
-    };
-
-    drawSection (shiftSectionLabel, shiftPanelBounds);
-    drawSection (vibratoSectionLabel, vibratoPanelBounds);
-    drawSection (warmthSectionLabel, warmthPanelBounds);
-
-    // Mounting screws at the four corners of the chassis.
-    const float inset = 17.0f;
-    const auto full = getLocalBounds().toFloat();
-    drawScrew (g, { inset, inset });
-    drawScrew (g, { full.getRight() - inset, inset });
-    drawScrew (g, { inset, full.getBottom() - inset });
-    drawScrew (g, { full.getRight() - inset, full.getBottom() - inset });
+    // Footer strip with small rivets, like the perforated base strip on a
+    // real rack unit.
+    auto footer = juce::Rectangle<float> (full.getX(), full.getBottom() - (float) footerStripHeight,
+                                           full.getWidth(), (float) footerStripHeight);
+    g.setColour (juce::Colours::black.withAlpha (0.12f));
+    g.fillRect (footer);
+    constexpr int numRivets = 10;
+    for (int i = 0; i < numRivets; ++i)
+    {
+        const float t = (float) (i + 1) / (float) (numRivets + 1);
+        g.setColour (currentTheme->textLight.withAlpha (0.18f));
+        g.fillEllipse (juce::Rectangle<float> (3.0f, 3.0f).withCentre ({ footer.getX() + t * footer.getWidth(), footer.getCentreY() }));
+    }
 }
 
 void JJBreezeAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
 
-    // Full header width for the centred title - the power LED is drawn
-    // separately (in paint()) off to the left and doesn't need room carved
-    // out of the text layout.
-    auto header = area.removeFromTop (headerHeight).reduced (18, 10);
-    titleLabel.setBounds (header.removeFromTop (26));
+    // Inset by sideMargin (not just a flat margin) so nothing sits under
+    // the rack ears painted in paint().
+    auto header = area.removeFromTop (headerHeight);
+    header.removeFromLeft (sideMargin);
+    header.removeFromRight (sideMargin);
+    header = header.reduced (0, 10);
+
+    // Nameplate row: the italic wordmark and its tracked-caps subtitle,
+    // left-aligned, plus the bypass switch on the right - same row as the
+    // header text, like the design mockup's POWER switch.
+    auto titleRow = header.removeFromTop (32);
+
+    auto bypassBlock = titleRow.removeFromRight (90);
+    bypassButton.setBounds (bypassBlock.removeFromRight (24).reduced (0, 1));
+    bypassBlock.removeFromRight (8);
+    bypassCaptionLabel.setBounds (bypassBlock);
+    titleRow.removeFromRight (16); // gap before the nameplate
+
+    const int titleWidth = juce::GlyphArrangement::getStringWidthInt (titleLabel.getFont(), titleLabel.getText()) + 4;
+    titleLabel.setBounds (titleRow.removeFromLeft (titleWidth));
+    titleRow.removeFromLeft (12);
+    subtitleLabel.setBounds (titleRow);
     header.removeFromTop (8); // gap before the preset row
 
     // Preset picker (left, flexible width) plus Save/Delete (right, fixed
@@ -562,7 +620,8 @@ void JJBreezeAudioProcessorEditor::resized()
 
     header.removeFromTop (6); // gap before the actions row
 
-    // Undo/redo (left) and bypass + A/B compare (right) share the last row.
+    // Undo/redo (left) and A/B compare (right) share the last row - bypass
+    // moved up to the nameplate row above.
     auto actionsRow = header;
     undoButton.setBounds (actionsRow.removeFromLeft (30));
     actionsRow.removeFromLeft (4);
@@ -571,17 +630,17 @@ void JJBreezeAudioProcessorEditor::resized()
     compareBButton.setBounds (actionsRow.removeFromRight (28));
     actionsRow.removeFromRight (4);
     compareAButton.setBounds (actionsRow.removeFromRight (28));
-    actionsRow.removeFromRight (10);
-    bypassButton.setBounds (actionsRow.removeFromRight (64));
 
     // Theme picker takes whatever's left in the middle of the row.
     themeBox.setBounds (actionsRow.withSizeKeepingCentre (juce::jmin (100, actionsRow.getWidth()), 22));
 
-    area.removeFromTop (8); // gap before the knob sections
-    area.removeFromLeft (outerPadding);
-    area.removeFromRight (outerPadding);
+    // Same insets as paint()'s divider-line geometry above, so the hairlines
+    // between columns always land exactly at each column's edge.
+    area.removeFromTop (8); // gap before the divider
+    area.removeFromLeft (sideMargin);
+    area.removeFromRight (sideMargin);
     area.removeFromTop (topPadding);
-    area.removeFromBottom (bottomPadding);
+    area.removeFromBottom (bottomPadding + footerStripHeight);
 
     const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
     const bool vibratoOn = processorRef.apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
@@ -599,12 +658,11 @@ void JJBreezeAudioProcessorEditor::resized()
     const int rowHeight = (area.getHeight() - sectionLabelHeight) / maxKnobRows;
 
     auto layoutColumn = [&] (juce::Rectangle<int> column, LedToggleButton& toggle, juce::Label& sectionLabel,
-                              bool on, juce::Rectangle<int>& panelBounds,
-                              std::initializer_list<std::initializer_list<LabelledKnob*>> rows)
+                              bool on, std::initializer_list<std::initializer_list<LabelledKnob*>> rows)
     {
         auto fullLabelRow = column.removeFromTop (sectionLabelHeight);
         auto labelRow = fullLabelRow;
-        toggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 5));
+        toggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 1));
         labelRow.removeFromRight (6);
         sectionLabel.setBounds (labelRow);
 
@@ -613,12 +671,8 @@ void JJBreezeAudioProcessorEditor::resized()
                 knob->setVisible (on);
 
         if (! on)
-        {
-            panelBounds = fullLabelRow.expanded (6, 4);
             return;
-        }
 
-        auto usedRows = column;
         for (auto& row : rows)
         {
             auto rowArea = column.removeFromTop (rowHeight);
@@ -632,8 +686,6 @@ void JJBreezeAudioProcessorEditor::resized()
                 knob->setBounds (slot.reduced (8));
             }
         }
-        usedRows.setHeight (rowHeight * (int) rows.size());
-        panelBounds = fullLabelRow.getUnion (usedRows).expanded (6, 4);
     };
 
     auto shiftColumn = area.removeFromLeft (columnWidth);
@@ -642,23 +694,21 @@ void JJBreezeAudioProcessorEditor::resized()
     area.removeFromLeft (columnGap);
     auto warmthColumn = area; // takes whatever's left, absorbing rounding remainder
 
-    layoutColumn (shiftColumn, shiftToggle, shiftSectionLabel, shiftOn, shiftPanelBounds,
+    layoutColumn (shiftColumn, shiftToggle, shiftSectionLabel, shiftOn,
                   { { &pitchLKnob, &pitchRKnob, &focusKnob }, { &delayLKnob, &delayRKnob, &mixKnob } });
 
-    layoutColumn (vibratoColumn, vibratoToggle, vibratoSectionLabel, vibratoOn, vibratoPanelBounds,
+    layoutColumn (vibratoColumn, vibratoToggle, vibratoSectionLabel, vibratoOn,
                   { { &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob } });
 
-    layoutColumn (warmthColumn, warmthToggle, warmthSectionLabel, warmthOn, warmthPanelBounds,
+    layoutColumn (warmthColumn, warmthToggle, warmthSectionLabel, warmthOn,
                   { { &warmthToneKnob, &warmthDriveKnob }, { &warmthBodyKnob, &warmthMixKnob } });
 
-    // Version readout, centred in the bottom margin between the two bottom
-    // corner screws — computed from the untouched full bounds rather than
-    // the already-consumed `area`, same as drawScrew() in paint().
+    // Version readout, centred in the thin gap just above the rivet strip
+    // — computed from the untouched full bounds rather than the already-
+    // consumed `area`, same as the rack ears/footer strip in paint().
     {
         const auto full = getLocalBounds();
-        constexpr int stripHeight = 14;
-        constexpr int sideClearance = 50; // clears both bottom corner screws
-        versionLabel.setBounds (full.getX() + sideClearance, full.getBottom() - stripHeight - 8,
-                                 full.getWidth() - sideClearance * 2, stripHeight);
+        versionLabel.setBounds (full.getX() + sideMargin, full.getBottom() - footerStripHeight - bottomPadding,
+                                 full.getWidth() - sideMargin * 2, bottomPadding);
     }
 }
