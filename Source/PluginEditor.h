@@ -408,6 +408,54 @@ private:
     bool isRedo;
 };
 
+/** Delete drawn as a small trash-bin icon (lid + handle + ridged body) —
+    same reasoning as UndoRedoButton above: a real vector icon instead of
+    text, matching the rest of the transport row. */
+class DeleteIconButton : public juce::Button
+{
+public:
+    DeleteIconButton() : juce::Button ({}) {}
+
+    const GearPalette::Theme* theme = &GearPalette::defaultTheme();
+    void setTheme (const GearPalette::Theme& t) { theme = &t; repaint(); }
+
+    void paintButton (juce::Graphics& g, bool /*isMouseOverButton*/, bool isButtonDown) override
+    {
+        auto bounds = getLocalBounds().toFloat().reduced (6.0f);
+        const juce::Colour colour = ! isEnabled() ? theme->metalDark.withAlpha (0.6f)
+                                                    : (isButtonDown ? theme->accent.brighter (0.3f) : theme->accent);
+        g.setColour (colour);
+
+        const float w = bounds.getWidth();
+        const float lidY = bounds.getY() + w * 0.22f;
+
+        // Handle, sitting on top of the lid.
+        juce::Path handle;
+        handle.addRoundedRectangle (bounds.getCentreX() - w * 0.16f, bounds.getY(), w * 0.32f, w * 0.22f, w * 0.06f);
+        g.strokePath (handle, juce::PathStrokeType (1.3f));
+
+        // Lid.
+        g.drawLine (bounds.getX(), lidY, bounds.getRight(), lidY, 1.6f);
+
+        // Body - a simple tapered bin outline.
+        const float inset = w * 0.1f;
+        juce::Path body;
+        body.startNewSubPath (bounds.getX() + inset, lidY + 2.0f);
+        body.lineTo (bounds.getRight() - inset, lidY + 2.0f);
+        body.lineTo (bounds.getRight() - inset * 1.7f, bounds.getBottom());
+        body.lineTo (bounds.getX() + inset * 1.7f, bounds.getBottom());
+        body.closeSubPath();
+        g.strokePath (body, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        // Three vertical ridges inside the body.
+        for (int i = -1; i <= 1; ++i)
+        {
+            const float x = bounds.getCentreX() + (float) i * w * 0.2f;
+            g.drawLine (x, lidY + 5.0f, x, bounds.getBottom() - 3.0f, 1.1f);
+        }
+    }
+};
+
 /** A rotary slider with a caption underneath and an amber LED-style
     numeric readout — the plugin's whole UI is a handful of these plus
     section groupings. */
@@ -514,12 +562,12 @@ private:
     void updateCompareButtonColours();
     void updateBypassToggleState();
 
-    // Switches the whole panel's colourway: updates currentTheme, hands it
-    // to every child that draws with one (the LookAndFeel, both toggle
-    // styles, every knob), re-applies the colours the rest of the editor's
-    // own components cached via setColour(), persists the choice on the
-    // processor (so it survives a session save/reload — see
-    // JJBreezeAudioProcessor::uiThemeId), and repaints.
+    // Applies a colourway: updates currentTheme, hands it to every child
+    // that draws with one (the LookAndFeel, both toggle styles, every
+    // knob), re-applies the colours the rest of the editor's own
+    // components cached via setColour(), and repaints. Called once, from
+    // the constructor, with the build-time JJ_BREEZE_DEFAULT_THEME — the
+    // colourway isn't user-switchable at runtime, so nothing else calls it.
     void applyTheme (const juce::String& themeId);
 
     // Repopulates presetBox from the factory list plus whatever's on disk
@@ -561,10 +609,9 @@ private:
     // updateBypassToggleState()/setUpSectionLabel(); everything else
     // (RetroLookAndFeel, LedToggleButton, UndoRedoButton, LabelledKnob)
     // keeps its own copy of the pointer via setTheme()/applyTheme().
+    // Fixed at build time (JJ_BREEZE_DEFAULT_THEME in CMakeLists.txt) rather
+    // than user-switchable — no in-app control changes this.
     const GearPalette::Theme* currentTheme = &GearPalette::defaultTheme();
-    // Lets the user pick a colourway — populated from GearPalette::allThemes()
-    // in the constructor, selection persisted via processorRef.uiThemeId.
-    juce::ComboBox themeBox;
 
     // Needed for any child component's setTooltip() text to actually pop up
     // as a tooltip; owns no visible bounds of its own.
@@ -589,7 +636,8 @@ private:
     // often buried, preset menu) plus any user presets on disk, refreshed
     // by refreshPresetBox().
     juce::ComboBox presetBox;
-    juce::TextButton saveButton { "SAVE" }, deleteButton { "DEL" };
+    juce::TextButton saveButton { "SAVE" };
+    DeleteIconButton deleteButton;
     int lastKnownProgram = -1;
     // Empty when a factory preset is the active patch; the name of the
     // active user preset otherwise — presetBox items in both ranges share

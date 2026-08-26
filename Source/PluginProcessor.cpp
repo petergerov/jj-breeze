@@ -608,39 +608,18 @@ void JJBreezeAudioProcessor::deleteUserPreset (const juce::String& name)
 
 void JJBreezeAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // Wrapped in an outer element rather than saving apvts's own XML
-    // directly (as before), so uiThemeId can ride alongside it as a
-    // sibling attribute without ever becoming part of apvts.state itself —
-    // see the comment on uiThemeId in the header for why that separation
-    // matters (a preset load/A-B recall must never change the theme).
-    juce::XmlElement root ("JJBreezeState");
-    root.setAttribute ("uiTheme", uiThemeId);
-
     if (auto state = apvts.copyState(); state.isValid())
-        if (auto apvtsXml = state.createXml())
-            root.addChildElement (apvtsXml.release());
-
-    copyXmlToBinary (root, destData);
+    {
+        if (auto xml = state.createXml())
+            copyXmlToBinary (*xml, destData);
+    }
 }
 
 void JJBreezeAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    auto xml = getXmlFromBinary (data, sizeInBytes);
-    if (xml == nullptr)
-        return;
-
-    if (xml->hasTagName ("JJBreezeState"))
-    {
-        uiThemeId = xml->getStringAttribute ("uiTheme", uiThemeId);
-        if (auto* apvtsXml = xml->getChildByName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*apvtsXml));
-    }
-    else if (xml->hasTagName (apvts.state.getType()))
-    {
-        // A session saved before uiThemeId/the wrapper element existed —
-        // same direct shape setStateInformation() always used.
-        apvts.replaceState (juce::ValueTree::fromXml (*xml));
-    }
+    if (auto xml = getXmlFromBinary (data, sizeInBytes))
+        if (xml->hasTagName (apvts.state.getType()))
+            apvts.replaceState (juce::ValueTree::fromXml (*xml));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

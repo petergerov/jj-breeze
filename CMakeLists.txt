@@ -13,6 +13,11 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS deployment ve
 # does this copy explicitly itself, redundantly but harmlessly).
 option(JJ_BREEZE_COPY_PLUGIN_AFTER_BUILD "Copy the built plugin into the system plugin folders after building" ON)
 
+# The panel's colourway is chosen here, at build time, rather than by the
+# user at runtime - see GearPalette::allThemes() in Source/PluginEditor.h
+# for the available ids ("dark", "cream", "olive", "slate").
+set(JJ_BREEZE_DEFAULT_THEME "slate" CACHE STRING "Default colourway id - see GearPalette::allThemes() in Source/PluginEditor.h")
+
 include(FetchContent)
 FetchContent_Declare(
     JUCE
@@ -50,6 +55,7 @@ target_compile_definitions(jj_breeze PUBLIC
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
+    JJ_BREEZE_DEFAULT_THEME="${JJ_BREEZE_DEFAULT_THEME}"
 )
 
 target_link_libraries(jj_breeze

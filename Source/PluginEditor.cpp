@@ -39,13 +39,19 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
       warmthMixKnob    (p.apvts, ParamIDs::warmthMix,    "MIX",
                         "Blend between the unprocessed sum and the Warmth-shaped output.")
 {
-    // Restore the persisted colourway before anything below sets a single
-    // cached colour, so every child is born already themed rather than
-    // painted once in the default theme and corrected a frame later. The
-    // pitchLKnob..warmthMixKnob members above were already constructed
-    // (in the init list, before this body runs) against GearPalette's
-    // compile-time default — applyTheme() below re-applies to them too.
-    applyTheme (p.uiThemeId);
+#ifndef JJ_BREEZE_DEFAULT_THEME
+    #define JJ_BREEZE_DEFAULT_THEME "slate" // guards a non-CMake build of this file
+#endif
+
+    // Applies the build-time colourway (JJ_BREEZE_DEFAULT_THEME in
+    // CMakeLists.txt — not user-switchable at runtime) before anything
+    // below sets a single cached colour, so every child is born already
+    // themed rather than painted once in GearPalette's compile-time
+    // default and corrected a frame later. The pitchLKnob..warmthMixKnob
+    // members above were already constructed (in the init list, before
+    // this body runs) against that same default — applyTheme() below
+    // re-applies to them too.
+    applyTheme (JJ_BREEZE_DEFAULT_THEME);
 
     setLookAndFeel (&retroLookAndFeel);
 
@@ -70,23 +76,6 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     versionLabel.setJustificationType (juce::Justification::centred);
     versionLabel.setTooltip (JucePlugin_Name " " JucePlugin_VersionString);
     addAndMakeVisible (versionLabel);
-
-    // Theme picker - switches the whole panel's colourway; see applyTheme().
-    themeBox.setTooltip ("Change the panel's colourway.");
-    for (auto& t : GearPalette::allThemes())
-        themeBox.addItem (t.displayName, themeBox.getNumItems() + 1);
-    themeBox.setSelectedId (1 + (int) std::distance (GearPalette::allThemes().begin(),
-                                                       std::find_if (GearPalette::allThemes().begin(), GearPalette::allThemes().end(),
-                                                                      [this] (const GearPalette::Theme& t) { return t.id == currentTheme->id; })),
-                             juce::dontSendNotification);
-    themeBox.onChange = [this]
-    {
-        const int idx = themeBox.getSelectedId() - 1;
-        const auto& themes = GearPalette::allThemes();
-        if (idx >= 0 && idx < (int) themes.size())
-            applyTheme (themes[(size_t) idx].id);
-    };
-    addAndMakeVisible (themeBox);
 
     // Preset picker: factory presets (JJBreezeAudioProcessor::getPresets())
     // plus user presets saved from this editor - previously only the
@@ -275,7 +264,6 @@ void JJBreezeAudioProcessorEditor::switchCompareSlot (int targetSlot)
 void JJBreezeAudioProcessorEditor::applyTheme (const juce::String& themeId)
 {
     currentTheme = &GearPalette::findTheme (themeId);
-    processorRef.uiThemeId = currentTheme->id;
 
     // Everything that draws itself with a `theme` pointer/member gets it
     // reassigned here; everything else just gets re-coloured to match
@@ -289,6 +277,7 @@ void JJBreezeAudioProcessorEditor::applyTheme (const juce::String& themeId)
     bypassCaptionLabel.setColour (juce::Label::textColourId, currentTheme->accent);
     undoButton.setTheme (*currentTheme);
     redoButton.setTheme (*currentTheme);
+    deleteButton.setTheme (*currentTheme);
 
     for (auto* knob : { &pitchLKnob, &pitchRKnob, &delayLKnob, &delayRKnob, &focusKnob, &mixKnob,
                          &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob,
@@ -305,11 +294,6 @@ void JJBreezeAudioProcessorEditor::applyTheme (const juce::String& themeId)
     presetBox.setColour (juce::ComboBox::textColourId, currentTheme->ledText);
     presetBox.setColour (juce::ComboBox::outlineColourId, currentTheme->metalDark);
     presetBox.setColour (juce::ComboBox::arrowColourId, currentTheme->accent);
-
-    themeBox.setColour (juce::ComboBox::backgroundColourId, currentTheme->ledBackground);
-    themeBox.setColour (juce::ComboBox::textColourId, currentTheme->ledText);
-    themeBox.setColour (juce::ComboBox::outlineColourId, currentTheme->metalDark);
-    themeBox.setColour (juce::ComboBox::arrowColourId, currentTheme->accent);
 
     updateCompareButtonColours();
     updateBypassToggleState();
@@ -507,7 +491,7 @@ void JJBreezeAudioProcessorEditor::drawBolt (juce::Graphics& g, juce::Point<floa
 
 // Shared with resized() so the header, dividers, ears and knob columns all
 // land in exactly the same place — see the mockup this matches.
-static constexpr int headerHeight = 112; // title + preset/save/delete row + undo/bypass/A-B row
+static constexpr int headerHeight = 90; // nameplate+power row, then one combined controls row
 static constexpr int earWidth = 44; // rack-ear side strips (see paint())
 static constexpr int contentGutter = 16; // gap between an ear and the content it flanks
 static constexpr int sideMargin = earWidth + contentGutter;
@@ -624,32 +608,31 @@ void JJBreezeAudioProcessorEditor::resized()
     titleLabel.setBounds (titleRow.removeFromLeft (titleWidth));
     titleRow.removeFromLeft (12);
     subtitleLabel.setBounds (titleRow);
-    header.removeFromTop (8); // gap before the preset row
+    header.removeFromTop (8); // gap before the controls row
 
-    // Preset picker (left, flexible width) plus Save/Delete (right, fixed
-    // width) share one row.
-    auto presetRow = header.removeFromTop (26);
-    deleteButton.setBounds (presetRow.removeFromRight (34));
-    presetRow.removeFromRight (4);
-    saveButton.setBounds (presetRow.removeFromRight (46));
-    presetRow.removeFromRight (8);
-    presetBox.setBounds (presetRow);
+    // Undo/redo, the preset picker, Save/Delete and A/B compare all share
+    // one row now (used to be two) - frees a whole row's height for the
+    // knob columns below. Left to right: preset picker (capped width, not
+    // flexible - the whole point is to leave room in the middle for other
+    // things later), Save, Delete; then, right-aligned, undo/redo and A/B
+    // compare.
+    auto controlsRow = header;
 
-    header.removeFromTop (6); // gap before the actions row
+    compareBButton.setBounds (controlsRow.removeFromRight (28));
+    controlsRow.removeFromRight (4);
+    compareAButton.setBounds (controlsRow.removeFromRight (28));
+    controlsRow.removeFromRight (10);
 
-    // Undo/redo (left) and A/B compare (right) share the last row - bypass
-    // moved up to the nameplate row above.
-    auto actionsRow = header;
-    undoButton.setBounds (actionsRow.removeFromLeft (30));
-    actionsRow.removeFromLeft (4);
-    redoButton.setBounds (actionsRow.removeFromLeft (30));
+    redoButton.setBounds (controlsRow.removeFromRight (30));
+    controlsRow.removeFromRight (4);
+    undoButton.setBounds (controlsRow.removeFromRight (30));
 
-    compareBButton.setBounds (actionsRow.removeFromRight (28));
-    actionsRow.removeFromRight (4);
-    compareAButton.setBounds (actionsRow.removeFromRight (28));
-
-    // Theme picker takes whatever's left in the middle of the row.
-    themeBox.setBounds (actionsRow.withSizeKeepingCentre (juce::jmin (100, actionsRow.getWidth()), 22));
+    presetBox.setBounds (controlsRow.removeFromLeft (220));
+    controlsRow.removeFromLeft (8);
+    saveButton.setBounds (controlsRow.removeFromLeft (46));
+    controlsRow.removeFromLeft (4);
+    deleteButton.setBounds (controlsRow.removeFromLeft (30));
+    // Whatever's left of controlsRow stays blank - reserved space.
 
     // Same insets as paint()'s divider-line geometry above, so the hairlines
     // between columns always land exactly at each column's edge.

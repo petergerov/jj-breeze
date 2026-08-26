@@ -101,16 +101,6 @@ public:
     bool hasCompareSnapshotStored (int slot) const { return slot >= 0 && slot < 2 && hasCompareSnapshot[(size_t) slot]; }
     int activeCompareSlot = 0;
 
-    // The editor's chosen colourway (GearPalette::Theme::id in PluginEditor.h
-    // — plain string here so this header doesn't need to include the editor
-    // header just for this). Deliberately NOT part of apvts's ValueTree:
-    // it's a visual preference, not part of the sound, so it must survive
-    // a factory/user preset load or an A/B recall untouched — those only
-    // ever touch apvts (replaceState() or individual parameters), never
-    // this. getStateInformation()/setStateInformation() persist it
-    // separately so a full session save/reload still restores it; see both.
-    juce::String uiThemeId { "dark" };
-
     // Bypass: forces every section off — the untouched dry signal — without
     // disturbing any knob value or which sections were individually on, and
     // restores them on un-bypass. A convenience layered on top of the three
