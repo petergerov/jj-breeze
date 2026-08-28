@@ -9,7 +9,18 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Pinned to windows-2022, NOT windows-latest: between 2026-06-08 and
+    # 2026-06-15 GitHub migrated the windows-latest / windows-2025 labels to a
+    # Windows Server 2025 image carrying Visual Studio 2026 (v18) instead of
+    # 2022 (v17), which is why the "Visual Studio 17 2022" generator below
+    # stopped resolving ("could not find any instance of Visual Studio").
+    # GitHub's own guidance for anyone still needing VS 2022 is to move to this
+    # image. See actions/runner-images#14017.
+    #
+    # Moving to windows-latest later means bumping the generator to
+    # "Visual Studio 18 2026" as well — and checking that the CMake on PATH is
+    # >= 4.1, since older CMake doesn't know that generator name at all.
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v4

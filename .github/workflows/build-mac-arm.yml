@@ -1,15 +1,19 @@
 name: Build macOS (Apple Silicon)
 
 # Builds all three formats from CMakeLists.txt's FORMATS list (AU, VST3,
-# Standalone) natively on an arm64 runner — pinned to macos-14 rather than
-# macos-latest so this stays an Apple Silicon build even if GitHub's
-# "latest" alias moves to a newer default later.
+# Standalone) natively on an arm64 runner — pinned to an explicit macos-N
+# rather than macos-latest so this stays a reproducible Apple Silicon build
+# even as GitHub's "latest" alias moves to a newer default.
+#
+# macos-14 was the pin until GitHub deprecated that image; macos-15 is the
+# current GA arm64 label (macos-26 is GA too, and macos-latest now points at
+# it, if you'd rather track a newer SDK).
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4

@@ -2,7 +2,8 @@ name: Package macOS installer (.pkg)
 
 # Runs scripts/dist-macos-pkg.sh on an Apple Silicon runner to produce the
 # same double-click installer that script builds locally, and uploads it as
-# a workflow artifact.
+# a workflow artifact. Pinned to the same explicit macos-N as
+# build-mac-arm.yml — see the note there.
 #
 # Signing and notarization are optional and degrade gracefully: with no
 # certificate secrets configured this still produces a working .pkg, just an
@@ -32,7 +33,7 @@ on:
 
 jobs:
   package:
-    runs-on: macos-14
+    runs-on: macos-15
 
     env:
       MACOS_APP_CERT_P12: ${{ secrets.MACOS_APP_CERT_P12 }}
