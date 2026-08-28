@@ -3,6 +3,10 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <numbers>   // for std::numbers::pi. M_PI is a POSIX extension rather
+                     // than standard C++: MSVC only defines it if
+                     // _USE_MATH_DEFINES is set before <cmath>, so using it
+                     // here built on macOS but not on Windows.
 
 /**
     A small, artifact-light pitch shifter, used both for the Shift section's
@@ -80,7 +84,7 @@ private:
     float windowFor (double d) const noexcept
     {
         const double phase = d / grainLenSamples;
-        return (float) (0.5 - 0.5 * std::cos (2.0 * M_PI * phase));
+        return (float) (0.5 - 0.5 * std::cos (2.0 * std::numbers::pi * phase));
     }
 
     float readTap (double d) const noexcept

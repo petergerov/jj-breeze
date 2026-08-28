@@ -3,6 +3,10 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <numbers>   // for std::numbers::pi. M_PI is a POSIX extension rather
+                     // than standard C++: MSVC only defines it if
+                     // _USE_MATH_DEFINES is set before <cmath>, so using it
+                     // here built on macOS but not on Windows.
 
 /**
     A short delay line with a slow, gentle built-in LFO wobble on top of the
@@ -40,7 +44,7 @@ public:
     }
 
     /** Starting phase for the LFO in [0, 1); use different values per channel for stereo movement. */
-    void setLfoStartPhase (float phase01) { lfoPhase = (float) (phase01 * 2.0 * M_PI); }
+    void setLfoStartPhase (float phase01) { lfoPhase = (float) (phase01 * 2.0 * std::numbers::pi); }
 
     void setBaseDelayMs (float ms)
     {
@@ -53,9 +57,9 @@ public:
 
         const float modDepthSamples = (float) (lfoDepthMs * 0.001 * sampleRate);
         const float lfo = std::sin (lfoPhase);
-        lfoPhase += (float) (2.0 * M_PI * lfoRateHz / sampleRate);
-        if (lfoPhase > (float) (2.0 * M_PI))
-            lfoPhase -= (float) (2.0 * M_PI);
+        lfoPhase += (float) (2.0 * std::numbers::pi * lfoRateHz / sampleRate);
+        if (lfoPhase > (float) (2.0 * std::numbers::pi))
+            lfoPhase -= (float) (2.0 * std::numbers::pi);
 
         const float delaySamples = std::clamp (baseDelaySamples + lfo * modDepthSamples,
                                                 1.0f, (float) (maxDelaySamples - 2));

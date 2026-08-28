@@ -341,7 +341,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // vibrato is a light touch rather than the main event, and Warmth
         // — not vibrato — is what actually carries the "Cajun Moon"
         // character here.
-        {  "Cajun Moon - J.J.Cale", 300.0f, 300.0f, 23.0f, 37.0f, 25.0f, 13.0f, 1.2f, 3.0f,  15.0f,  3500.0f, 20.0f, 0.0f, 20.0f, true,  true, true },
+        {  "JJ Cajun Moon", 300.0f, 300.0f, 23.0f, 37.0f, 25.0f, 13.0f, 1.2f, 3.0f,  15.0f,  3500.0f, 20.0f, 0.0f, 20.0f, true,  true, true },
 
         // "Lies": built from analyzing example/lies_1.mp3 (dry) against
         // example/lies_2.mp3 (processed) the same way JJ Dark Vocal was —
@@ -362,7 +362,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // 1288Hz) needed no separate Warmth stage — an upward pitch shift
         // this size produces that on its own. No vibrato or delay signature
         // was found, so both stay off/default.
-        { "Lies - J.J.Cale", 0.0f, 470.0f, 15.0f, 15.0f, 25.0f, 25.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, true, false, false },
+        { "JJ Lies", 0.0f, 470.0f, 15.0f, 15.0f, 25.0f, 25.0f, 1.2f, 3.0f, 0.0f, 3500.0f, 20.0f, 0.0f, 0.0f, true, false, false },
 
         // "JJ Dark Vocal": originally built by comparing two takes of the
         // same performance (example/cajunmoon_vocal_vocal_1.mp3 vs
@@ -379,7 +379,7 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // pitch-down covers the full band, not just what's above the
         // default 150Hz crossover point. Warmth's Body control adds the
         // low-mid "chest" fullness the original analysis found.
-        { "Dark Vocal - J.J.Cale", -300.0f, -300.0f, 15.0f, 15.0f, 25.0f, 15.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 70.0f, 15.0f, true, true, true },
+        { "JJ Dark Vocal", -300.0f, -300.0f, 15.0f, 15.0f, 25.0f, 15.0f, 1.1f, 3.5f, 15.0f, 2800.0f, 25.0f, 70.0f, 15.0f, true, true, true },
 
         // "Octave Width": a stereo width effect using Shift's independent
         // L/R at the full-octave end of its range rather than the
