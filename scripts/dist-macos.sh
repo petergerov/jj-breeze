@@ -9,23 +9,23 @@
 #   --clean   Remove the build/ directory before building (forces a full
 #             rebuild instead of reusing an existing CMake cache).
 #
-# Optional env vars:
+# Optional env vars — normally set once in scripts/.env (gitignored; see
+# RELEASE.md). Anything already in the environment wins over that file.
 #   CODESIGN_IDENTITY   Sign each artefact with this identity before
-#                        packaging (e.g. "Developer ID Application: Name (TEAMID)",
-#                        or just the TEAMID). Defaults to the "Developer ID
-#                        Application" identity, the one Gatekeeper will
-#                        actually accept on someone else's Mac (an "Apple
-#                        Development" identity, which is what a bare team ID
-#                        tends to resolve to, is only good for local/Xcode
-#                        testing). Pass CODESIGN_IDENTITY= (empty) to skip
-#                        signing.
+#                        packaging. Use a "Developer ID Application" identity:
+#                        that is the one Gatekeeper accepts on someone else's
+#                        Mac (an "Apple Development" identity, which is what a
+#                        bare team ID tends to resolve to, is only good for
+#                        local/Xcode testing). Empty (or unset) skips signing.
 
 set -euo pipefail
 
-# ${VAR=default}, not ${VAR:=default}: the ":" form also substitutes the
-# default for an *empty* value, which would quietly re-enable signing for the
-# documented "pass CODESIGN_IDENTITY= to skip" case above.
-: "${CODESIGN_IDENTITY=Developer ID Application: Petar Gerov (C9LBGZNZ6P)}"
+# shellcheck source=scripts/load-env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/load-env.sh"
+
+# Define-if-unset, without the colon: ${VAR:=} would also overwrite an
+# intentionally-empty value and silently re-enable signing.
+: "${CODESIGN_IDENTITY=}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"

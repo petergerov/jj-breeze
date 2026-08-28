@@ -20,7 +20,7 @@ name: Package macOS installer (.pkg)
 # below is ticked:
 #
 #   APPLE_ID                  the Apple ID the certificates belong to
-#   APPLE_TEAM_ID             e.g. C9LBGZNZ6P
+#   APPLE_TEAM_ID             your 10-character Apple Developer team ID
 #   APPLE_APP_PASSWORD        an app-specific password from appleid.apple.com
 #                             (NOT the regular Apple ID password)
 on:

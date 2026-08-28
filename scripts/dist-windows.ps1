@@ -20,10 +20,11 @@
 .PARAMETER CertPath
     Path to a .pfx code-signing certificate. When omitted (the default), the
     binaries and the installer are left unsigned — SmartScreen will warn on
-    other machines, but the installer works. Defaults to $env:WINDOWS_CERT_PFX.
+    other machines, but the installer works. Falls back to WINDOWS_CERT_PFX
+    from the environment or from scripts\.env (gitignored; see RELEASE.md).
 
 .PARAMETER CertPassword
-    Password for the .pfx. Defaults to $env:WINDOWS_CERT_PASSWORD.
+    Password for the .pfx. Falls back to WINDOWS_CERT_PASSWORD the same way.
 
 .PARAMETER TimestampUrl
     RFC 3161 timestamp server. Timestamping is what keeps a signature valid
@@ -45,6 +46,40 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Read scripts\.env (gitignored; see RELEASE.md) so credentials live in one
+# place for both platforms. A variable already present in the environment is
+# left alone, so CI — which sets real environment variables and ships no .env
+# — always wins. Parsing is deliberately forgiving: a malformed line is
+# skipped rather than being allowed to fail the build.
+function Import-DotEnv {
+    param([string]$Path)
+    if (-not (Test-Path $Path)) { return }
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        $trimmed = $line.Trim()
+        if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
+        $split = $trimmed.IndexOf('=')
+        if ($split -lt 1) { continue }
+        $key = $trimmed.Substring(0, $split).Trim() -replace '^export\s+', ''
+        if ($key -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') { continue }
+        # Already set in the environment: leave it.
+        if (Test-Path "env:$key") { continue }
+        $value = $trimmed.Substring($split + 1).Trim()
+        if ($value.Length -ge 2 -and
+            (($value.StartsWith('"') -and $value.EndsWith('"')) -or
+             ($value.StartsWith("'") -and $value.EndsWith("'")))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+        Set-Item -Path "env:$key" -Value $value
+    }
+}
+Import-DotEnv (Join-Path $PSScriptRoot '.env')
+
+# Re-read the parameter defaults now that .env has been applied: param() is
+# evaluated before any of the body runs, so an unbound -CertPath still held
+# whatever $env: looked like a moment ago (usually nothing).
+if (-not $PSBoundParameters.ContainsKey('CertPath')) { $CertPath = $env:WINDOWS_CERT_PFX }
+if (-not $PSBoundParameters.ContainsKey('CertPassword')) { $CertPassword = $env:WINDOWS_CERT_PASSWORD }
 
 # Native tools signal failure through $LASTEXITCODE rather than by throwing, so
 # every one of them below is followed by this.

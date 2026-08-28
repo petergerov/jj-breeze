@@ -19,7 +19,7 @@
 #
 # Credentials — either set all three of:
 #   APPLE_ID             Apple ID that owns the Developer ID certificates
-#   APPLE_TEAM_ID        e.g. C9LBGZNZ6P
+#   APPLE_TEAM_ID        your 10-character Apple Developer team ID
 #   APPLE_APP_PASSWORD   app-specific password from appleid.apple.com
 #                        (NOT the normal Apple ID password)
 # or, to reuse a stored profile instead:
@@ -27,17 +27,23 @@
 #
 # Optional:
 #   PKG_SIGN_IDENTITY    "Developer ID Installer" identity, used only if the
-#                        .pkg is not already signed. Defaults to this repo's.
+#                        .pkg is not already signed.
 #
-# Typical use, after scripts/dist-macos-pkg.sh has built and signed a package:
-#   APPLE_ID=you@example.com APPLE_TEAM_ID=C9LBGZNZ6P APPLE_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx \
-#       scripts/notarize-macos-pkg.sh
+# All of these normally live in scripts/.env (gitignored; see RELEASE.md), so
+# the typical use, after scripts/dist-macos-pkg.sh has built and signed a
+# package, is just:
+#   scripts/notarize-macos-pkg.sh
 
 set -euo pipefail
 
-# ${VAR=default}, not ${VAR:=default}: the ":" form would also override an
+# Credentials live in scripts/.env, never in this committed file. The loader
+# leaves anything already exported untouched.
+# shellcheck source=scripts/load-env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/load-env.sh"
+
+# Define-if-unset, without the colon: ${VAR:=} would also override an
 # explicitly-empty value, which is how a caller says "don't sign".
-: "${PKG_SIGN_IDENTITY=Developer ID Installer: Petar Gerov (C9LBGZNZ6P)}"
+: "${PKG_SIGN_IDENTITY=}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -91,13 +97,15 @@ error: no notarization credentials.
 Set all three of:
     APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD
 
+The usual place for these is scripts/.env (gitignored) — see RELEASE.md.
+
 The password must be an app-specific password generated at appleid.apple.com
 (Sign-In and Security -> App-Specific Passwords), not your Apple ID password.
 
 Alternatively store them once:
     xcrun notarytool store-credentials "notary-profile" \
-        --apple-id you@example.com --team-id C9LBGZNZ6P --password <app-specific-password>
-and then re-run with NOTARY_PROFILE=notary-profile.
+        --apple-id <your-apple-id> --team-id <your-team-id> --password <app-specific-password>
+and then set NOTARY_PROFILE=notary-profile.
 MSG
     exit 1
 fi

@@ -19,9 +19,9 @@
 #   --notarize   After building the .pkg, submit it to Apple's notary
 #                service and staple the ticket so Gatekeeper doesn't warn
 #                on other Macs. Requires a one-time setup on this machine:
-#                    xcrun notarytool store-credentials "notary-profile" \
-#                        --apple-id you@example.com \
-#                        --team-id C9LBGZNZ6P \
+#                    xcrun notarytool store-credentials "$NOTARY_PROFILE" \
+#                        --apple-id "$APPLE_ID" \
+#                        --team-id "$APPLE_TEAM_ID" \
 #                        --password <app-specific-password>
 #                (generate the app-specific password at appleid.apple.com —
 #                not your regular Apple ID password). This step talks to
@@ -29,29 +29,32 @@
 #                separately when you're ready to actually ship, not as part
 #                of routine local builds.
 #
-# Env vars:
+# Env vars — normally set once in scripts/.env (gitignored; see RELEASE.md).
+# Anything already in the environment wins over that file.
 #   APP_SIGN_IDENTITY   Identity for signing the AU/VST3/app bundles.
-#                        Defaults to "Developer ID Application: Petar Gerov (C9LBGZNZ6P)".
-#                        Pass APP_SIGN_IDENTITY= (empty) to skip binary signing
-#                        (the .pkg will still build, but won't pass Gatekeeper
-#                        on another Mac).
+#                        Empty (or unset) skips binary signing: the .pkg will
+#                        still build, but won't pass Gatekeeper on another Mac.
 #   PKG_SIGN_IDENTITY   Identity for signing the .pkg itself (a *different*
 #                        identity type than the one above — "Developer ID
 #                        Installer", not "Developer ID Application").
-#                        Defaults to "Developer ID Installer: Petar Gerov (C9LBGZNZ6P)".
-#                        Pass PKG_SIGN_IDENTITY= (empty) to skip pkg signing.
-#   NOTARY_PROFILE       Keychain profile name for notarytool. Defaults to
-#                        "notary-profile" (see --notarize above).
+#                        Empty (or unset) skips pkg signing.
+#   NOTARY_PROFILE       Keychain profile name for notarytool (--notarize).
 
 set -euo pipefail
 
-# ${VAR=default}, not ${VAR:=default}: the ":" form also substitutes the
-# default for an *empty* value, which would quietly re-enable signing for the
-# documented "pass it empty to skip" case above (and break unattended builds
-# on a machine without these identities, e.g. CI).
-: "${APP_SIGN_IDENTITY=Developer ID Application: Petar Gerov (C9LBGZNZ6P)}"
-: "${PKG_SIGN_IDENTITY=Developer ID Installer: Petar Gerov (C9LBGZNZ6P)}"
-: "${NOTARY_PROFILE:=notary-profile}"
+# Identities and credentials live in scripts/.env, never in this file — it is
+# committed, that one is not. The loader leaves anything already exported
+# untouched, so `APP_SIGN_IDENTITY= scripts/dist-macos-pkg.sh` still forces an
+# unsigned build.
+# shellcheck source=scripts/load-env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/load-env.sh"
+
+# Define-if-unset so `set -u` can't trip over a value that .env didn't supply.
+# Note the missing colon: ${VAR=} would otherwise also overwrite an
+# intentionally-empty value, silently re-enabling signing.
+: "${APP_SIGN_IDENTITY=}"
+: "${PKG_SIGN_IDENTITY=}"
+: "${NOTARY_PROFILE=}"
 
 DO_CLEAN=0
 DO_NOTARIZE=0
@@ -205,6 +208,12 @@ rm -f "$FINAL_PKG"
 productbuild "${PRODUCTBUILD_ARGS[@]}" "$FINAL_PKG"
 
 if [[ "$DO_NOTARIZE" == "1" ]]; then
+    # No longer defaulted in this file, so say so plainly rather than calling
+    # notarytool with an empty --keychain-profile and letting it fail obscurely.
+    if [[ -z "$NOTARY_PROFILE" ]]; then
+        echo "error: --notarize needs NOTARY_PROFILE (set it in scripts/.env; see RELEASE.md)" >&2
+        exit 1
+    fi
     echo "==> Submitting for notarization (keychain profile: $NOTARY_PROFILE)"
     xcrun notarytool submit "$FINAL_PKG" --keychain-profile "$NOTARY_PROFILE" --wait
     echo "==> Stapling notarization ticket"

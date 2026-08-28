@@ -6,3 +6,8 @@ dist/
 *.xcuserstate
 /.idea/
 /.vscode/
+
+# Local signing/notarization credentials — see RELEASE.md. Never commit this:
+# it holds Developer ID identity names, the Apple ID and an app-specific
+# password.
+scripts/.env

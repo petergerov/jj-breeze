@@ -40,6 +40,58 @@ scripts over hand-rolled `cp` commands.
 
 ---
 
+## Credentials: `scripts/.env`
+
+Every signing identity, Apple ID and password the local scripts need lives in
+one gitignored file, `scripts/.env`. No credential is hardcoded in a committed
+script — a fresh clone signs nothing until you create it.
+
+Create it by copying the block below and filling in your own values:
+
+```sh
+# --- macOS code signing ---
+# Exact identity names, as printed by:  security find-identity -v
+APP_SIGN_IDENTITY="Developer ID Application: <your name> (<team id>)"
+PKG_SIGN_IDENTITY="Developer ID Installer: <your name> (<team id>)"
+CODESIGN_IDENTITY="Developer ID Application: <your name> (<team id>)"
+
+# --- macOS notarization ---
+APPLE_ID="<your apple id>"
+APPLE_TEAM_ID="<your 10-character team id>"
+APPLE_APP_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+NOTARY_PROFILE="notary-profile"
+
+# --- Windows code signing ---
+WINDOWS_CERT_PFX=""
+WINDOWS_CERT_PASSWORD=""
+```
+
+| Variable | Used by | Empty or unset means |
+| --- | --- | --- |
+| `APP_SIGN_IDENTITY` | `dist-macos-pkg.sh` | binaries left unsigned |
+| `PKG_SIGN_IDENTITY` | `dist-macos-pkg.sh`, `notarize-macos-pkg.sh` | `.pkg` left unsigned |
+| `CODESIGN_IDENTITY` | `dist-macos.sh` | artefacts in the zip left unsigned |
+| `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD` | `notarize-macos-pkg.sh` | notarization refuses to start |
+| `NOTARY_PROFILE` | `dist-macos-pkg.sh --notarize` | `--notarize` refuses to start |
+| `WINDOWS_CERT_PFX`, `WINDOWS_CERT_PASSWORD` | `dist-windows.ps1` | installer left unsigned |
+
+Notes:
+
+- **A variable already set in the environment always wins over the file.** That
+  keeps the documented override working —
+  `APP_SIGN_IDENTITY= scripts/dist-macos-pkg.sh` still forces an unsigned
+  build — and means CI, which sets real environment variables and ships no
+  `.env`, is never shadowed by it.
+- `scripts/load-env.sh` is the shared loader for the bash scripts;
+  `dist-windows.ps1` reads the same file itself.
+- The file holds an app-specific password in plain text. If you would rather
+  not, leave `APPLE_APP_PASSWORD` empty and use `NOTARY_PROFILE` instead — that
+  keeps the password in the login keychain (see *Notarize* below).
+- GitHub Actions does **not** read this file. CI credentials are repository
+  secrets; see *GitHub Actions* below.
+
+---
+
 ## macOS
 
 ### Prerequisites
@@ -49,8 +101,9 @@ scripts over hand-rolled `cp` commands.
   - **Developer ID Application** — signs the AU, VST3 and app binaries
   - **Developer ID Installer** — signs the `.pkg` wrapper
 
-  Check with `security find-identity -v`. Both currently expire
-  **2027-02-01** (team `C9LBGZNZ6P`).
+  Check with `security find-identity -v`, and put the exact identity names
+  in `scripts/.env`. Certificates expire — `security find-certificate -c
+  "Developer ID Installer" -p | openssl x509 -noout -enddate` tells you when.
 - An **app-specific password** for notarization, generated at
   appleid.apple.com under *Sign-In and Security → App-Specific Passwords*.
   This is not your Apple ID password.
@@ -82,7 +135,7 @@ un-notarized package looks like:
 ```
 $ pkgutil --check-signature dist/jj-breeze-1.0.0-macos.pkg
    Status: signed by a developer certificate issued by Apple for distribution
-   1. Developer ID Installer: Petar Gerov (C9LBGZNZ6P)
+   1. Developer ID Installer: <your name> (<team id>)
 
 $ spctl --assess -vv --type install dist/jj-breeze-1.0.0-macos.pkg
    rejected
@@ -95,11 +148,11 @@ without contacting Apple — without stapling, a Mac with no network connection
 shows the warning again.
 
 ```sh
-APPLE_ID=peter@gerov.com \
-APPLE_TEAM_ID=C9LBGZNZ6P \
-APPLE_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx \
-    scripts/notarize-macos-pkg.sh
+scripts/notarize-macos-pkg.sh
 ```
+
+`APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_PASSWORD` come from `scripts/.env`;
+setting them inline for a one-off run works too and takes precedence.
 
 With no arguments it picks the newest `.pkg` in `dist/`. It signs the package
 first if it isn't signed yet, runs a local preflight, submits, staples and
@@ -116,9 +169,10 @@ them once and use the profile instead:
 
 ```sh
 xcrun notarytool store-credentials "notary-profile" \
-    --apple-id peter@gerov.com --team-id C9LBGZNZ6P --password <app-specific-password>
+    --apple-id <your-apple-id> --team-id <your-team-id> --password <app-specific-password>
 
-NOTARY_PROFILE=notary-profile scripts/notarize-macos-pkg.sh
+# then, in scripts/.env, leave APPLE_APP_PASSWORD empty and set:
+#   NOTARY_PROFILE="notary-profile"
 ```
 
 `scripts/dist-macos-pkg.sh --notarize` does build-sign-notarize in one shot,
@@ -222,7 +276,7 @@ still produce a working installer, just an unsigned one. Configure these under
 | `MACOS_INSTALLER_CERT_P12` | base64 of the Developer ID **Installer** `.p12` |
 | `MACOS_CERT_PASSWORD` | the password both `.p12` files were exported with |
 | `APPLE_ID` | Apple ID owning the certificates |
-| `APPLE_TEAM_ID` | `C9LBGZNZ6P` |
+| `APPLE_TEAM_ID` | your 10-character Apple Developer team ID |
 | `APPLE_APP_PASSWORD` | app-specific password |
 
 Export both certificates from Keychain Access, then
