@@ -14,6 +14,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The artefact filenames follow PRODUCT_NAME in CMakeLists.txt, not the
+      # repo or CMake target name — read it here (as scripts/*.sh do) rather
+      # than hardcoding "jj-breeze", so a rename there can't silently leave
+      # the upload steps below pointing at a path that no longer exists.
+      - name: Read PRODUCT_NAME from CMakeLists.txt
+        shell: bash
+        run: |
+          product_name="$(grep -Eo 'PRODUCT_NAME "[^"]*"' CMakeLists.txt | sed -E 's/PRODUCT_NAME "(.*)"/\1/')"
+          if [[ -z "$product_name" ]]; then
+              echo "error: could not determine PRODUCT_NAME from CMakeLists.txt" >&2
+              exit 1
+          fi
+          echo "PRODUCT_NAME=$product_name" >> "$GITHUB_ENV"
+
       # JUCE itself is fetched by CMake (FetchContent, see CMakeLists.txt);
       # caching that checkout is the single biggest speedup available here,
       # since it's a full framework clone every time otherwise.
@@ -33,12 +47,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jj-breeze-vst3-windows
-          path: build/jj_breeze_artefacts/Release/VST3/jj-breeze.vst3
+          path: build/jj_breeze_artefacts/Release/VST3/${{ env.PRODUCT_NAME }}.vst3
           if-no-files-found: error
 
       - name: Upload Standalone
         uses: actions/upload-artifact@v4
         with:
           name: jj-breeze-standalone-windows
-          path: build/jj_breeze_artefacts/Release/Standalone/jj-breeze.exe
+          path: build/jj_breeze_artefacts/Release/Standalone/${{ env.PRODUCT_NAME }}.exe
           if-no-files-found: error

@@ -14,6 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The artefact filenames follow PRODUCT_NAME in CMakeLists.txt, not the
+      # repo or CMake target name — read it here (as scripts/*.sh do) rather
+      # than hardcoding "jj-breeze", so a rename there can't silently leave
+      # the upload steps below pointing at a path that no longer exists.
+      - name: Read PRODUCT_NAME from CMakeLists.txt
+        run: |
+          product_name="$(grep -Eo 'PRODUCT_NAME "[^"]*"' CMakeLists.txt | sed -E 's/PRODUCT_NAME "(.*)"/\1/')"
+          if [[ -z "$product_name" ]]; then
+              echo "error: could not determine PRODUCT_NAME from CMakeLists.txt" >&2
+              exit 1
+          fi
+          echo "PRODUCT_NAME=$product_name" >> "$GITHUB_ENV"
+
       # JUCE itself is fetched by CMake (FetchContent, see CMakeLists.txt);
       # caching that checkout is the single biggest speedup available here,
       # since it's a full framework clone every time otherwise.
@@ -29,6 +42,25 @@ jobs:
       - name: Build (Release)
         run: cmake --build build --config Release --parallel
 
+      # auval only ever looks at *registered* components — it can't be pointed
+      # at a bundle in the build tree. Since the post-build copy is off in CI
+      # (see JJ_BREEZE_COPY_PLUGIN_AFTER_BUILD in CMakeLists.txt), nothing has
+      # installed the AU at this point, and auval would fail with "didn't find
+      # the component". This is the per-user copy scripts/install-local.sh
+      # does; it needs no elevation, unlike the system-wide Windows paths that
+      # made the post-build copy unsafe for CI in the first place.
+      - name: Install AU for validation
+        run: |
+          au_dest="$HOME/Library/Audio/Plug-Ins/Components"
+          mkdir -p "$au_dest"
+          rm -rf "$au_dest/$PRODUCT_NAME.component"
+          cp -R "build/jj_breeze_artefacts/Release/AU/$PRODUCT_NAME.component" "$au_dest/"
+          # Same cache clear as install-local.sh: macOS keys its AudioComponent
+          # registry by type/subtype/manufacturer, so a stale entry would shadow
+          # the bundle just copied in.
+          rm -f "$HOME/Library/Caches/AudioUnitCache/com.apple.audiounits.cache" || true
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+
       # Same auval check scripts/install-local.sh runs locally after every
       # build — catches AU regressions here instead of only on a dev machine.
       - name: Validate AU with auval
@@ -38,19 +70,19 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jj-breeze-au-macos-arm64
-          path: build/jj_breeze_artefacts/Release/AU/jj-breeze.component
+          path: build/jj_breeze_artefacts/Release/AU/${{ env.PRODUCT_NAME }}.component
           if-no-files-found: error
 
       - name: Upload VST3
         uses: actions/upload-artifact@v4
         with:
           name: jj-breeze-vst3-macos-arm64
-          path: build/jj_breeze_artefacts/Release/VST3/jj-breeze.vst3
+          path: build/jj_breeze_artefacts/Release/VST3/${{ env.PRODUCT_NAME }}.vst3
           if-no-files-found: error
 
       - name: Upload Standalone
         uses: actions/upload-artifact@v4
         with:
           name: jj-breeze-standalone-macos-arm64
-          path: build/jj_breeze_artefacts/Release/Standalone/jj-breeze.app
+          path: build/jj_breeze_artefacts/Release/Standalone/${{ env.PRODUCT_NAME }}.app
           if-no-files-found: error
