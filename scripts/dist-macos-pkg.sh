@@ -45,8 +45,12 @@
 
 set -euo pipefail
 
-: "${APP_SIGN_IDENTITY:=Developer ID Application: Petar Gerov (C9LBGZNZ6P)}"
-: "${PKG_SIGN_IDENTITY:=Developer ID Installer: Petar Gerov (C9LBGZNZ6P)}"
+# ${VAR=default}, not ${VAR:=default}: the ":" form also substitutes the
+# default for an *empty* value, which would quietly re-enable signing for the
+# documented "pass it empty to skip" case above (and break unattended builds
+# on a machine without these identities, e.g. CI).
+: "${APP_SIGN_IDENTITY=Developer ID Application: Petar Gerov (C9LBGZNZ6P)}"
+: "${PKG_SIGN_IDENTITY=Developer ID Installer: Petar Gerov (C9LBGZNZ6P)}"
 : "${NOTARY_PROFILE:=notary-profile}"
 
 DO_CLEAN=0
