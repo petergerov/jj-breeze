@@ -22,7 +22,10 @@
 
 set -euo pipefail
 
-: "${CODESIGN_IDENTITY:=Developer ID Application: Petar Gerov (C9LBGZNZ6P)}"
+# ${VAR=default}, not ${VAR:=default}: the ":" form also substitutes the
+# default for an *empty* value, which would quietly re-enable signing for the
+# documented "pass CODESIGN_IDENTITY= to skip" case above.
+: "${CODESIGN_IDENTITY=Developer ID Application: Petar Gerov (C9LBGZNZ6P)}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"

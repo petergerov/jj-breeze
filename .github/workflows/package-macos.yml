@@ -1,0 +1,130 @@
+name: Package macOS installer (.pkg)
+
+# Runs scripts/dist-macos-pkg.sh on an Apple Silicon runner to produce the
+# same double-click installer that script builds locally, and uploads it as
+# a workflow artifact.
+#
+# Signing and notarization are optional and degrade gracefully: with no
+# certificate secrets configured this still produces a working .pkg, just an
+# unsigned one that Gatekeeper will warn about on other Macs. To get a
+# shippable installer, add these repository secrets:
+#
+#   MACOS_APP_CERT_P12        base64 of the "Developer ID Application" .p12
+#   MACOS_INSTALLER_CERT_P12  base64 of the "Developer ID Installer" .p12
+#   MACOS_CERT_PASSWORD       the password both .p12 files were exported with
+#
+# (export both from Keychain Access, then `base64 -i cert.p12 | pbcopy`).
+#
+# Notarization additionally needs, and only runs when the "notarize" input
+# below is ticked:
+#
+#   APPLE_ID                  the Apple ID the certificates belong to
+#   APPLE_TEAM_ID             e.g. C9LBGZNZ6P
+#   APPLE_APP_PASSWORD        an app-specific password from appleid.apple.com
+#                             (NOT the regular Apple ID password)
+on:
+  workflow_dispatch:
+    inputs:
+      notarize:
+        description: "Notarize and staple the .pkg (needs the Apple ID secrets; takes several minutes)"
+        type: boolean
+        default: false
+
+jobs:
+  package:
+    runs-on: macos-14
+
+    env:
+      MACOS_APP_CERT_P12: ${{ secrets.MACOS_APP_CERT_P12 }}
+      MACOS_INSTALLER_CERT_P12: ${{ secrets.MACOS_INSTALLER_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JUCE itself is fetched by CMake (FetchContent, see CMakeLists.txt);
+      # caching that checkout is the single biggest speedup available here,
+      # since it's a full framework clone every time otherwise.
+      - name: Cache JUCE checkout
+        uses: actions/cache@v4
+        with:
+          path: build/_deps/juce-src
+          key: juce-src-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      # codesign/productbuild can only use identities from a keychain, so the
+      # .p12 secrets get imported into a throwaway one that lives just for
+      # this job. set-key-partition-list is what stops macOS from putting up
+      # an (unanswerable, on a runner) "allow access to key?" prompt.
+      - name: Import signing certificates
+        if: env.MACOS_APP_CERT_P12 != ''
+        run: |
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          keychain_password="$(uuidgen)"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+
+          echo "$MACOS_APP_CERT_P12" | base64 --decode > "$RUNNER_TEMP/app.p12"
+          security import "$RUNNER_TEMP/app.p12" -k "$keychain" \
+              -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/app.p12"
+
+          if [[ -n "$MACOS_INSTALLER_CERT_P12" ]]; then
+              echo "$MACOS_INSTALLER_CERT_P12" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+              security import "$RUNNER_TEMP/installer.p12" -k "$keychain" \
+                  -P "$MACOS_CERT_PASSWORD" -T /usr/bin/productbuild
+              rm -f "$RUNNER_TEMP/installer.p12"
+          fi
+
+          security set-key-partition-list -S apple-tool:,apple:,codesign:,productbuild: \
+              -s -k "$keychain_password" "$keychain" >/dev/null
+          # Prepend, don't replace: the runner's default keychains still need
+          # to be searchable for everything else in the job.
+          security list-keychains -d user -s "$keychain" \
+              $(security list-keychains -d user | tr -d '"')
+
+          echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      # dist-macos-pkg.sh defaults both identities to this repo's own
+      # "Developer ID ..." names and signs unconditionally; passing them
+      # through as empty is its documented way to build unsigned instead.
+      - name: Build installer
+        run: |
+          if [[ -n "${SIGNING_KEYCHAIN:-}" ]]; then
+              echo "==> Signing identities available in the job keychain:"
+              security find-identity -v -p codesigning "$SIGNING_KEYCHAIN"
+              scripts/dist-macos-pkg.sh
+          else
+              echo "==> No certificate secrets configured, building an unsigned .pkg"
+              APP_SIGN_IDENTITY= PKG_SIGN_IDENTITY= scripts/dist-macos-pkg.sh
+          fi
+
+      # Deliberately not the script's own --notarize: that path expects a
+      # notarytool keychain profile set up interactively on a dev machine,
+      # where here the credentials come straight from secrets.
+      - name: Notarize and staple
+        if: inputs.notarize && env.SIGNING_KEYCHAIN != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          if [[ -z "$APPLE_ID" || -z "$APPLE_TEAM_ID" || -z "$APPLE_APP_PASSWORD" ]]; then
+              echo "error: notarize was requested but APPLE_ID / APPLE_TEAM_ID / APPLE_APP_PASSWORD are not all set" >&2
+              exit 1
+          fi
+          pkg="$(ls dist/*.pkg)"
+          xcrun notarytool submit "$pkg" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --wait
+          xcrun stapler staple "$pkg"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: jj-breeze-macos-installer
+          path: dist/*.pkg
+          if-no-files-found: error
