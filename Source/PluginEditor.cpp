@@ -1,5 +1,42 @@
 #include "PluginEditor.h"
 
+namespace
+{
+    // Which finish the panel is wearing is a per-machine preference, not
+    // part of the patch: it lives in a small settings file of its own rather
+    // than in the plugin state, so it neither travels with a session nor
+    // shows up in the preset list — the same split the AUv3 sibling makes
+    // (ThemeStore keeps its choice in UserDefaults, well away from its user
+    // presets). The PropertiesFile is opened on the stack for each read and
+    // write rather than held as a static: a static would still be alive when
+    // JUCE's leak detector runs at plugin unload, and report itself as a
+    // leak in a debug build.
+    constexpr const char* themeSettingKey = "finish";
+
+    juce::PropertiesFile::Options uiSettingsOptions()
+    {
+        juce::PropertiesFile::Options options;
+        options.applicationName = "j.j.breeze";
+        options.filenameSuffix = "settings";
+        options.folderName = "Gerov";
+        options.osxLibrarySubFolder = "Application Support";
+        return options;
+    }
+
+    juce::String storedFinishId (const juce::String& fallback)
+    {
+        juce::PropertiesFile settings (uiSettingsOptions());
+        return settings.getValue (themeSettingKey, fallback);
+    }
+
+    void storeFinishId (const juce::String& id)
+    {
+        juce::PropertiesFile settings (uiSettingsOptions());
+        settings.setValue (themeSettingKey, id);
+        settings.saveIfNeeded();
+    }
+}
+
 JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processorRef (p),
@@ -40,42 +77,40 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
                         "Blend between the unprocessed sum and the Warmth-shaped output.")
 {
 #ifndef JJ_BREEZE_DEFAULT_THEME
-    #define JJ_BREEZE_DEFAULT_THEME "slate" // guards a non-CMake build of this file
+    #define JJ_BREEZE_DEFAULT_THEME "green" // guards a non-CMake build of this file
 #endif
 
-    // Applies the build-time colourway (JJ_BREEZE_DEFAULT_THEME in
-    // CMakeLists.txt — not user-switchable at runtime) before anything
-    // below sets a single cached colour, so every child is born already
-    // themed rather than painted once in GearPalette's compile-time
-    // default and corrected a frame later. The pitchLKnob..warmthMixKnob
-    // members above were already constructed (in the init list, before
-    // this body runs) against that same default — applyTheme() below
-    // re-applies to them too.
-    applyTheme (JJ_BREEZE_DEFAULT_THEME);
+    // Fits whichever finish was last selected on this machine, falling back
+    // to the build-time JJ_BREEZE_DEFAULT_THEME the first time the plugin
+    // runs. Done before anything below sets a single cached colour, so every
+    // child is born already themed rather than painted once in GearPalette's
+    // compile-time default and corrected a frame later. The
+    // pitchLKnob..warmthMixKnob members above were already constructed (in
+    // the init list, before this body runs) against that same default —
+    // applyTheme() below re-applies to them too.
+    applyTheme (storedFinishId (JJ_BREEZE_DEFAULT_THEME));
 
     setLookAndFeel (&retroLookAndFeel);
 
-    // Nameplate: an italic serif wordmark ("j.j.breeze") with a small
-    // tracked-caps subtitle sharing its baseline, left-aligned - matches
-    // the design mockup's brand plate.
+    // The finish selector: a small rotary switch left of the wordmark, the
+    // way the panel colour would be a fitted option on the real thing —
+    // deliberately not a preset parameter, see uiSettings() above.
+    finishSelector.setTooltip ("Panel finish - turns to the next colourway.");
+    finishSelector.onClick = [this] { cycleTheme(); };
+    addAndMakeVisible (finishSelector);
+
+    // Nameplate: the italic serif wordmark. Its strapline now lives on the
+    // stamped nameplate at the bottom of the panel (modelPlate below), as
+    // it does on the hardware this is drawn from.
     titleLabel.setText ("j.j.breeze", juce::dontSendNotification);
     titleLabel.setFont (juce::Font (juce::FontOptions ("Georgia", 22.0f, juce::Font::italic | juce::Font::bold)));
     titleLabel.setColour (juce::Label::textColourId, currentTheme->textLight);
     titleLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (titleLabel);
 
-    subtitleLabel.setText ("STEREO MICRO-PITCH WIDENER", juce::dontSendNotification);
-    subtitleLabel.setFont (juce::Font (juce::FontOptions (9.5f, juce::Font::bold)).withExtraKerningFactor (0.2f));
-    subtitleLabel.setColour (juce::Label::textColourId, currentTheme->textMuted);
-    subtitleLabel.setJustificationType (juce::Justification::centredLeft);
-    addAndMakeVisible (subtitleLabel);
-
-    versionLabel.setText ("v" JucePlugin_VersionString, juce::dontSendNotification);
-    versionLabel.setFont (juce::Font (juce::FontOptions (9.5f, juce::Font::plain)).withExtraKerningFactor (0.03f));
-    versionLabel.setColour (juce::Label::textColourId, currentTheme->textMuted.withAlpha (0.55f));
-    versionLabel.setJustificationType (juce::Justification::centred);
-    versionLabel.setTooltip (JucePlugin_Name " " JucePlugin_VersionString);
-    addAndMakeVisible (versionLabel);
+    modelPlate.setText ("MODEL JJB-1  -  STEREO MICRO-PITCH WIDENER  -  v" JucePlugin_VersionString);
+    modelPlate.setTheme (*currentTheme);
+    addAndMakeVisible (modelPlate);
 
     // Preset picker: factory presets (JJBreezeAudioProcessor::getPresets())
     // plus user presets saved from this editor - previously only the
@@ -134,10 +169,11 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     // POWER switch - drives processorRef's bypass flag, but shown the
     // opposite way round from it (on = powered/processing, off = bypassed,
     // the untouched dry signal) since that's what a power switch means.
-    // A switch (see LedToggleButton), not a click-toggling button - its
+    // A bat switch (see BatSwitchButton), not a click-toggling button - its
     // drawn state always comes from processorRef.isBypassed() via
     // updateBypassToggleState(), same idea as the section on/off switches
-    // but with no apvts parameter of its own to attach to.
+    // but with no apvts parameter of its own to attach to. The jewel lamp
+    // above it is the pilot light, lit whenever the unit is processing.
     bypassButton.setTooltip ("Power off to bypass all processing (the untouched dry signal) without changing any knob or section state; power back on to resume.");
     bypassButton.setClickingTogglesState (false);
     bypassButton.onClick = [this]
@@ -146,11 +182,14 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
         updateBypassToggleState();
     };
     addAndMakeVisible (bypassButton);
+
+    powerLamp.setColourway (currentTheme->lampRed);
+    addAndMakeVisible (powerLamp);
     updateBypassToggleState();
 
     bypassCaptionLabel.setText ("POWER", juce::dontSendNotification);
-    bypassCaptionLabel.setFont (juce::Font (juce::FontOptions (10.5f, juce::Font::bold)).withExtraKerningFactor (0.14f));
-    bypassCaptionLabel.setColour (juce::Label::textColourId, currentTheme->accent);
+    bypassCaptionLabel.setFont (juce::Font (juce::FontOptions (9.5f, juce::Font::bold)).withExtraKerningFactor (0.2f));
+    bypassCaptionLabel.setColour (juce::Label::textColourId, currentTheme->textLight.withAlpha (0.9f));
     bypassCaptionLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (bypassCaptionLabel);
 
@@ -185,10 +224,17 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     addAndMakeVisible (warmthBodyKnob);
     addAndMakeVisible (warmthMixKnob);
 
-    // Lit IN/OUT switches for each section - flipping one off both bypasses
-    // that section's contribution to the sound and collapses its knob row
-    // (in resized()) so a disabled section can't confuse the user into
-    // thinking its knobs still matter.
+    for (auto* lamp : { &shiftLamp, &vibratoLamp, &warmthLamp })
+    {
+        lamp->setColourway (currentTheme->accent);
+        addAndMakeVisible (*lamp);
+    }
+
+    // Bat switches for each section - flipping one off both bypasses that
+    // section's contribution to the sound and dims its knobs (see
+    // updateSectionEnablement()), so a disabled section can't confuse the
+    // user into thinking its knobs still matter, while the module itself
+    // stays on the panel where it was.
     setUpToggle (shiftToggle,   "Turn the Shift section (pitch + delay widener) on or off.");
     setUpToggle (vibratoToggle, "Turn the Vibrato section on or off.");
     setUpToggle (warmthToggle,  "Turn the Warmth tone stage on or off.");
@@ -198,9 +244,10 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
         p.apvts, ParamIDs::vibratoOn, vibratoToggle);
     warmthToggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, ParamIDs::warmthOn, warmthToggle);
+    updateSectionEnablement();
 
     // A toggle can also change from host automation or preset recall, not
-    // just a click here - poll and relayout so the collapse always matches.
+    // just a click here - poll and re-dim so the panel always matches.
     startTimerHz (15);
 
     // Lets keyPressed() below receive Cmd+Z/Cmd+Shift+Z once this editor has
@@ -213,9 +260,9 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     // design's own aspect ratio so knobs, panels and text all scale
     // together instead of the layout stretching oddly in one direction.
     // A wide rack-panel shape - Shift/Vibrato/Warmth sit side by side as
-    // three columns (see resized()) rather than stacked as three rows,
+    // three sub-plates (see resized()) rather than stacked as three rows,
     // which used to make the window tall and narrow instead.
-    constexpr int defaultWidth = 920, defaultHeight = 460;
+    constexpr int defaultWidth = 920, defaultHeight = 480;
     setResizable (true, true);
     setResizeLimits (defaultWidth * 3 / 4, defaultHeight * 3 / 4, defaultWidth * 2, defaultHeight * 2);
     getConstrainer()->setFixedAspectRatio ((double) defaultWidth / (double) defaultHeight);
@@ -231,16 +278,150 @@ JJBreezeAudioProcessorEditor::~JJBreezeAudioProcessorEditor()
 void JJBreezeAudioProcessorEditor::setUpSectionLabel (juce::Label& label, const juce::String& text)
 {
     label.setText (text, juce::dontSendNotification);
-    label.setFont (juce::Font (juce::FontOptions (12.0f, juce::Font::bold)).withExtraKerningFactor (0.14f));
-    label.setColour (juce::Label::textColourId, currentTheme->accent);
+    label.setFont (juce::Font (juce::FontOptions (12.0f, juce::Font::bold)).withExtraKerningFactor (0.2f));
+    label.setColour (juce::Label::textColourId, currentTheme->textLight);
     label.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (label);
 }
 
-void JJBreezeAudioProcessorEditor::setUpToggle (LedToggleButton& button, const juce::String& tooltip)
+void JJBreezeAudioProcessorEditor::setUpToggle (BatSwitchButton& button, const juce::String& tooltip)
 {
     button.setTooltip (tooltip);
     addAndMakeVisible (button);
+}
+
+void JJBreezeAudioProcessorEditor::applyTheme (const juce::String& themeId, bool remember)
+{
+    currentTheme = &GearPalette::findTheme (themeId);
+
+    if (remember)
+        storeFinishId (currentTheme->id);
+
+    // Everything that draws itself with a `theme` pointer/member gets it
+    // reassigned here; everything else just gets re-coloured to match,
+    // same as their original setup did.
+    retroLookAndFeel.setTheme (*currentTheme);
+    finishSelector.setTheme (*currentTheme);
+    modelPlate.setTheme (*currentTheme);
+    shiftToggle.setTheme (*currentTheme);
+    vibratoToggle.setTheme (*currentTheme);
+    warmthToggle.setTheme (*currentTheme);
+    bypassButton.setTheme (*currentTheme);
+    undoButton.setTheme (*currentTheme);
+    redoButton.setTheme (*currentTheme);
+    deleteButton.setTheme (*currentTheme);
+
+    for (auto* lamp : { &shiftLamp, &vibratoLamp, &warmthLamp })
+    {
+        lamp->setTheme (*currentTheme);
+        lamp->setColourway (currentTheme->accent);
+    }
+    powerLamp.setTheme (*currentTheme);
+    powerLamp.setColourway (currentTheme->lampRed);
+
+    for (auto* knob : { &pitchLKnob, &pitchRKnob, &delayLKnob, &delayRKnob, &focusKnob, &mixKnob,
+                         &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob,
+                         &warmthToneKnob, &warmthDriveKnob, &warmthBodyKnob, &warmthMixKnob })
+        knob->applyTheme (*currentTheme);
+
+    titleLabel.setColour (juce::Label::textColourId, currentTheme->textLight);
+    bypassCaptionLabel.setColour (juce::Label::textColourId, currentTheme->textLight.withAlpha (0.9f));
+
+    presetBox.setColour (juce::ComboBox::backgroundColourId, currentTheme->ledBackground);
+    presetBox.setColour (juce::ComboBox::textColourId, currentTheme->ledText);
+    presetBox.setColour (juce::ComboBox::outlineColourId, currentTheme->metalDark);
+    presetBox.setColour (juce::ComboBox::arrowColourId, currentTheme->accent);
+
+    saveButton.setColour (juce::TextButton::buttonColourId, currentTheme->metalDark);
+    saveButton.setColour (juce::TextButton::textColourOffId, currentTheme->textLight);
+
+    // The dropdown, the save/delete dialogs and their text field are
+    // separate windows drawn by this LookAndFeel too — left in the default
+    // grey they'd be the one part of the plugin that isn't the fitted
+    // finish.
+    retroLookAndFeel.setColour (juce::PopupMenu::backgroundColourId, currentTheme->ledBackground);
+    retroLookAndFeel.setColour (juce::PopupMenu::textColourId, currentTheme->textLight);
+    retroLookAndFeel.setColour (juce::PopupMenu::headerTextColourId, currentTheme->accent);
+    retroLookAndFeel.setColour (juce::PopupMenu::highlightedBackgroundColourId, currentTheme->accentDim);
+    retroLookAndFeel.setColour (juce::PopupMenu::highlightedTextColourId, currentTheme->textLight);
+    retroLookAndFeel.setColour (juce::AlertWindow::backgroundColourId, currentTheme->panelFill);
+    retroLookAndFeel.setColour (juce::AlertWindow::textColourId, currentTheme->textLight);
+    retroLookAndFeel.setColour (juce::AlertWindow::outlineColourId, currentTheme->metalDark);
+    retroLookAndFeel.setColour (juce::TextEditor::backgroundColourId, currentTheme->ledBackground);
+    retroLookAndFeel.setColour (juce::TextEditor::textColourId, currentTheme->ledText);
+    retroLookAndFeel.setColour (juce::TextEditor::highlightColourId, currentTheme->accentDim);
+    retroLookAndFeel.setColour (juce::TextEditor::outlineColourId, currentTheme->metalDark);
+    retroLookAndFeel.setColour (juce::TextEditor::focusedOutlineColourId, currentTheme->accent);
+
+    updateCompareButtonColours();
+    updateBypassToggleState();
+    updateSectionEnablement(); // re-dims whatever is switched off in the new finish's colours
+    rebuildPanelImage();
+    repaint();
+}
+
+void JJBreezeAudioProcessorEditor::cycleTheme()
+{
+    const auto& themes = GearPalette::allThemes();
+    const int next = (GearPalette::indexOfTheme (currentTheme->id) + 1) % (int) themes.size();
+    applyTheme (themes[(size_t) next].id, true);
+}
+
+void JJBreezeAudioProcessorEditor::updateCompareButtonColours()
+{
+    const bool onA = processorRef.activeCompareSlot == 0;
+    compareAButton.setColour (juce::TextButton::buttonColourId, onA ? currentTheme->accentDim : currentTheme->metalDark);
+    compareAButton.setColour (juce::TextButton::textColourOffId, onA ? currentTheme->accent : currentTheme->textMuted);
+    compareBButton.setColour (juce::TextButton::buttonColourId, onA ? currentTheme->metalDark : currentTheme->accentDim);
+    compareBButton.setColour (juce::TextButton::textColourOffId, onA ? currentTheme->textMuted : currentTheme->accent);
+}
+
+void JJBreezeAudioProcessorEditor::updateBypassToggleState()
+{
+    // Inverted from the underlying flag - see the comment on bypassButton's
+    // setup. Not a click-toggling button (bypass can also change from
+    // outside a click on this switch - see timerCallback()), so its drawn
+    // state is always synced from the actual bypass flag rather than assumed.
+    const bool powered = ! processorRef.isBypassed();
+    bypassButton.setToggleState (powered, juce::dontSendNotification);
+    powerLamp.setOn (powered);
+}
+
+// Dims and locks a section's knobs when its switch is off, rather than
+// hiding them: the module keeps its sub-plate, its name and its switch, so
+// the panel doesn't reshuffle every time a section is turned off - the same
+// behaviour as the AUv3 sibling (see JJBreezeMainView's .opacity/
+// .allowsHitTesting on each column).
+void JJBreezeAudioProcessorEditor::setSectionEnabled (bool on, juce::Label& sectionLabel, JewelLampComponent& lamp,
+                                                       std::initializer_list<LabelledKnob*> knobs)
+{
+    sectionLabel.setColour (juce::Label::textColourId, on ? currentTheme->textLight : currentTheme->textMuted);
+    sectionLabel.repaint();
+    lamp.setOn (on);
+
+    for (auto* knob : knobs)
+    {
+        knob->setAlpha (on ? 1.0f : 0.42f);
+        knob->setEnabled (on);
+    }
+}
+
+// Reads the three section-enabled parameters and dims/undims accordingly,
+// caching what it saw so timerCallback() can tell when one of them changes
+// from outside this editor (host automation, preset recall) without
+// re-applying — and repainting — every tick.
+void JJBreezeAudioProcessorEditor::updateSectionEnablement()
+{
+    shiftWasOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
+    vibratoWasOn = processorRef.apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
+    warmthWasOn  = processorRef.apvts.getRawParameterValue (ParamIDs::warmthOn)->load()  > 0.5f;
+
+    setSectionEnabled (shiftWasOn, shiftSectionLabel, shiftLamp,
+                        { &pitchLKnob, &pitchRKnob, &focusKnob, &delayLKnob, &delayRKnob, &mixKnob });
+    setSectionEnabled (vibratoWasOn, vibratoSectionLabel, vibratoLamp,
+                        { &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob });
+    setSectionEnabled (warmthWasOn, warmthSectionLabel, warmthLamp,
+                        { &warmthToneKnob, &warmthDriveKnob, &warmthBodyKnob, &warmthMixKnob });
 }
 
 void JJBreezeAudioProcessorEditor::switchCompareSlot (int targetSlot)
@@ -259,63 +440,6 @@ void JJBreezeAudioProcessorEditor::switchCompareSlot (int targetSlot)
     processorRef.recallCompareSnapshot (targetSlot);
     processorRef.activeCompareSlot = targetSlot;
     updateCompareButtonColours();
-}
-
-void JJBreezeAudioProcessorEditor::applyTheme (const juce::String& themeId)
-{
-    currentTheme = &GearPalette::findTheme (themeId);
-
-    // Everything that draws itself with a `theme` pointer/member gets it
-    // reassigned here; everything else just gets re-coloured to match
-    // (titleLabel/versionLabel/presetBox/section labels/compare+bypass
-    // buttons below), same as their original setup did.
-    retroLookAndFeel.setTheme (*currentTheme);
-    shiftToggle.setTheme (*currentTheme);
-    vibratoToggle.setTheme (*currentTheme);
-    warmthToggle.setTheme (*currentTheme);
-    bypassButton.setTheme (*currentTheme);
-    bypassCaptionLabel.setColour (juce::Label::textColourId, currentTheme->accent);
-    undoButton.setTheme (*currentTheme);
-    redoButton.setTheme (*currentTheme);
-    deleteButton.setTheme (*currentTheme);
-
-    for (auto* knob : { &pitchLKnob, &pitchRKnob, &delayLKnob, &delayRKnob, &focusKnob, &mixKnob,
-                         &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob,
-                         &warmthToneKnob, &warmthDriveKnob, &warmthBodyKnob, &warmthMixKnob })
-        knob->applyTheme (*currentTheme);
-
-    titleLabel.setColour (juce::Label::textColourId, currentTheme->textLight);
-    subtitleLabel.setColour (juce::Label::textColourId, currentTheme->textMuted);
-    versionLabel.setColour (juce::Label::textColourId, currentTheme->textMuted.withAlpha (0.55f));
-    for (auto* label : { &shiftSectionLabel, &vibratoSectionLabel, &warmthSectionLabel })
-        label->setColour (juce::Label::textColourId, currentTheme->accent);
-
-    presetBox.setColour (juce::ComboBox::backgroundColourId, currentTheme->ledBackground);
-    presetBox.setColour (juce::ComboBox::textColourId, currentTheme->ledText);
-    presetBox.setColour (juce::ComboBox::outlineColourId, currentTheme->metalDark);
-    presetBox.setColour (juce::ComboBox::arrowColourId, currentTheme->accent);
-
-    updateCompareButtonColours();
-    updateBypassToggleState();
-    repaint();
-}
-
-void JJBreezeAudioProcessorEditor::updateCompareButtonColours()
-{
-    const bool onA = processorRef.activeCompareSlot == 0;
-    compareAButton.setColour (juce::TextButton::buttonColourId, onA ? currentTheme->accentDim : currentTheme->metalDark);
-    compareAButton.setColour (juce::TextButton::textColourOffId, onA ? currentTheme->accent : currentTheme->textMuted);
-    compareBButton.setColour (juce::TextButton::buttonColourId, onA ? currentTheme->metalDark : currentTheme->accentDim);
-    compareBButton.setColour (juce::TextButton::textColourOffId, onA ? currentTheme->textMuted : currentTheme->accent);
-}
-
-void JJBreezeAudioProcessorEditor::updateBypassToggleState()
-{
-    // Inverted from the underlying flag - see the comment on bypassButton's
-    // setup. Not a click-toggling button (bypass can also change from
-    // outside a click on this switch - see timerCallback()), so its drawn
-    // state is always synced from the actual bypass flag rather than assumed.
-    bypassButton.setToggleState (! processorRef.isBypassed(), juce::dontSendNotification);
 }
 
 void JJBreezeAudioProcessorEditor::refreshPresetBox()
@@ -435,18 +559,12 @@ void JJBreezeAudioProcessorEditor::timerCallback()
     const bool warmthOn  = processorRef.apvts.getRawParameterValue (ParamIDs::warmthOn)->load()  > 0.5f;
 
     if (shiftOn != shiftWasOn || vibratoOn != vibratoWasOn || warmthOn != warmthWasOn)
-    {
-        shiftWasOn = shiftOn;
-        vibratoWasOn = vibratoOn;
-        warmthWasOn = warmthOn;
-        resized();
-        repaint();
-    }
+        updateSectionEnablement();
 
     // A section coming back on while we still think we're bypassed means
     // it was flipped directly (a click on its own toggle, or host
     // automation) - bypass no longer describes the actual state, so stop
-    // showing it as active rather than let the LED lie.
+    // showing it as active rather than let the pilot lamp lie.
     if (processorRef.isBypassed() && (shiftOn || vibratoOn || warmthOn))
     {
         processorRef.clearBypassedFlag();
@@ -478,204 +596,205 @@ void JJBreezeAudioProcessorEditor::timerCallback()
     redoButton.setEnabled (processorRef.undoManager.canRedo());
 }
 
-void JJBreezeAudioProcessorEditor::drawBolt (juce::Graphics& g, juce::Point<float> centre, float radius) const
-{
-    const auto bounds = juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (centre);
-    juce::ColourGradient grad (currentTheme->metalLight, centre.x - radius * 0.3f, centre.y - radius * 0.4f,
-                                currentTheme->metalDark, centre.x, centre.y, true);
-    g.setGradientFill (grad);
-    g.fillEllipse (bounds);
-    g.setColour (currentTheme->chassisBottom.withAlpha (0.5f));
-    g.drawEllipse (bounds, 1.0f);
-}
-
-// Shared with resized() so the header, dividers, ears and knob columns all
-// land in exactly the same place — see the mockup this matches.
-static constexpr int headerHeight = 90; // nameplate+power row, then one combined controls row
-static constexpr int earWidth = 44; // rack-ear side strips (see paint())
+// Shared by resized() and rebuildPanelImage() so the hardware and the
+// controls mounted on it always land in the same place — see the AUv3
+// sibling's earWidth/footerHeight/contentGutter, which these mirror at
+// desktop scale.
+static constexpr int headerHeight = 64; // one row: wordmark, presets, undo/redo, A/B, power
+static constexpr int headerPadding = 8; // above and below that row
+static constexpr int headerControlHeight = 26; // preset picker and the buttons beside it
+static constexpr int earWidth = 44; // rack-ear side rails
 static constexpr int contentGutter = 16; // gap between an ear and the content it flanks
 static constexpr int sideMargin = earWidth + contentGutter;
-static constexpr int topPadding = 12;
-static constexpr int footerStripHeight = 18;
-static constexpr int bottomPadding = 14; // clearance above the footer strip
-static constexpr int sectionLabelHeight = 34; // taller than a text row alone needs, so the section on/off switches (below) have real room
-static constexpr int columnGap = 16; // horizontal gap between the Shift/Vibrato/Warmth columns
-static constexpr int toggleWidth = 34;
+static constexpr int grooveGap = 8; // gap between the header and the engraved groove under it
+static constexpr int topPadding = 12; // gap between that groove and the section plates
+static constexpr int footerStripHeight = 18; // riveted steel base rail
+static constexpr int modelPlateHeight = 18;
+static constexpr int modelPlateGap = 7; // clearance above and below the nameplate
+static constexpr int columnGap = 18; // gap between the Shift/Vibrato/Warmth plates
 static constexpr int numColumns = 3;
 static constexpr int numColumnGaps = 2; // gaps: Shift-Vibrato, Vibrato-Warmth
-static constexpr int maxKnobRows = 2; // the most any one column needs (Shift and Warmth both use 2)
+static constexpr int maxKnobRows = 2; // the most any one section needs (Shift and Warmth both use 2)
+static constexpr int platePaddingX = 19; // inside a sub-plate, clear of its corner screws
+static constexpr int platePaddingTop = 9;
+static constexpr int platePaddingBottom = 12;
+static constexpr int sectionLabelHeight = 34; // room for the lamp, the engraved name and the bat switch
+static constexpr int toggleWidth = 26;
+static constexpr int lampSize = 10;
+static constexpr int knobSlotMargin = 5; // breathing room each side of a knob within its slot
+
+std::array<juce::Rectangle<int>, 3> JJBreezeAudioProcessorEditor::sectionPlateBounds() const
+{
+    auto area = getLocalBounds();
+    area.removeFromTop (headerHeight + grooveGap + topPadding);
+    area.removeFromLeft (sideMargin);
+    area.removeFromRight (sideMargin);
+    area.removeFromBottom (footerStripHeight + modelPlateHeight + modelPlateGap * 2);
+
+    const int columnWidth = (area.getWidth() - numColumnGaps * columnGap) / numColumns;
+
+    std::array<juce::Rectangle<int>, 3> plates;
+    plates[0] = area.removeFromLeft (columnWidth);
+    area.removeFromLeft (columnGap);
+    plates[1] = area.removeFromLeft (columnWidth);
+    area.removeFromLeft (columnGap);
+    plates[2] = area; // takes whatever's left, absorbing the rounding remainder
+    return plates;
+}
+
+void JJBreezeAudioProcessorEditor::rebuildPanelImage()
+{
+    const auto bounds = getLocalBounds();
+
+    if (bounds.isEmpty())
+    {
+        panelImage = juce::Image();
+        return;
+    }
+
+    // Rendered at the display's own pixel density rather than in logical
+    // units, so the screws, plate bevels and lettering stay crisp on a
+    // Retina/scaled display instead of being blitted up from a smaller
+    // bitmap.
+    float scale = 1.0f;
+    if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+        scale = juce::jlimit (1.0f, 3.0f, (float) display->scale);
+
+    panelImage = juce::Image (juce::Image::RGB,
+                               juce::roundToInt ((float) bounds.getWidth() * scale),
+                               juce::roundToInt ((float) bounds.getHeight() * scale), false);
+
+    juce::Graphics g (panelImage);
+    g.addTransform (juce::AffineTransform::scale (scale));
+
+    const auto full = bounds.toFloat();
+
+    // Hammered enamel front plate, lit from the front centre.
+    RetroDraw::chassisPaint (g, *currentTheme, full);
+
+    // Engraved groove under the header: a scored line with the light
+    // catching its lower lip, rather than a flat hairline.
+    const int grooveY = headerHeight + grooveGap;
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.drawHorizontalLine (grooveY, (float) sideMargin, full.getRight() - (float) sideMargin);
+    g.setColour (currentTheme->panelEdgeLight.withAlpha (0.35f));
+    g.drawHorizontalLine (grooveY + 1, (float) sideMargin, full.getRight() - (float) sideMargin);
+
+    // One screwed-on sub-plate per section, the way 70s consoles bolted a
+    // separate engraved plate over every module.
+    for (const auto& plate : sectionPlateBounds())
+        RetroDraw::panelPlate (g, *currentTheme, plate.toFloat());
+
+    // Rack ears and the riveted base rail are bolted on over everything
+    // else, same as on the real thing.
+    RetroDraw::rackEar (g, *currentTheme, { full.getX(), full.getY(), (float) earWidth, full.getHeight() });
+    RetroDraw::rackEar (g, *currentTheme, { full.getRight() - (float) earWidth, full.getY(),
+                                             (float) earWidth, full.getHeight() });
+    RetroDraw::footerRivetStrip (g, *currentTheme,
+                                  { full.getX(), full.getBottom() - (float) footerStripHeight,
+                                    full.getWidth(), (float) footerStripHeight }, 16);
+}
 
 void JJBreezeAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    const auto full = getLocalBounds().toFloat();
-    auto bounds = full;
-
-    // Chassis, lit from the top like a rack unit under studio lighting.
-    // Colours (and everything else below) come from currentTheme rather
-    // than a fixed palette — see applyTheme().
-    juce::ColourGradient backdrop (currentTheme->chassisTop, bounds.getCentreX(), bounds.getY(),
-                                    currentTheme->chassisBottom, bounds.getCentreX(), bounds.getBottom(), false);
-    g.setGradientFill (backdrop);
-    g.fillRect (bounds);
-
-    // Faint brushed-aluminium grain.
-    juce::Random grain (12345);
-    for (float ly = bounds.getY(); ly < bounds.getBottom(); ly += 3.0f)
+    // Everything static about the panel was rendered once by
+    // rebuildPanelImage(); only the controls on top of it are live.
+    if (panelImage.isValid())
     {
-        g.setColour (juce::Colours::white.withAlpha (grain.nextFloat() * 0.035f));
-        g.drawHorizontalLine ((int) ly, 0.0f, bounds.getWidth());
+        g.drawImage (panelImage, getLocalBounds().toFloat(), juce::RectanglePlacement::stretchToFit);
+        return;
     }
 
-    // Rack ears — full-height side strips carrying two mounting bolts
-    // each, matching the design mockup exactly (replaces the old four
-    // corner screws).
-    auto drawEar = [&] (const juce::Rectangle<float>& ear)
-    {
-        juce::ColourGradient earGrad (currentTheme->metalMid, ear.getX(), ear.getY(),
-                                       currentTheme->metalDark, ear.getX(), ear.getBottom(), false);
-        g.setGradientFill (earGrad);
-        g.fillRect (ear);
-
-        const float boltRadius = (float) earWidth * 0.17f;
-        drawBolt (g, { ear.getCentreX(), ear.getY() + ear.getHeight() * 0.28f }, boltRadius);
-        drawBolt (g, { ear.getCentreX(), ear.getY() + ear.getHeight() * 0.72f }, boltRadius);
-    };
-    drawEar ({ full.getX(), full.getY(), (float) earWidth, full.getHeight() });
-    drawEar ({ full.getRight() - (float) earWidth, full.getY(), (float) earWidth, full.getHeight() });
-
-    // Header strip with a machined seam underneath (a light line over a
-    // dark one, like a panel edge catching the light).
-    auto header = bounds.removeFromTop ((float) headerHeight);
-    g.setColour (juce::Colours::black.withAlpha (0.18f));
-    g.fillRect (header);
-
-    // One thin divider under the header, then two more between the three
-    // knob columns — flat hairlines rather than rounded cards, matching
-    // the mockup. Same inset/removal amounts as resized() so these always
-    // land exactly between the knob columns they're separating.
-    auto content = bounds.reduced ((float) sideMargin, 0.0f);
-    content.removeFromTop (8.0f);
-    g.setColour (currentTheme->textLight.withAlpha (0.14f));
-    g.drawHorizontalLine ((int) content.getY(), content.getX(), content.getRight());
-
-    content.removeFromTop ((float) topPadding);
-    content.removeFromBottom ((float) (bottomPadding + footerStripHeight));
-    const float columnWidthF = (content.getWidth() - (float) (numColumnGaps * columnGap)) / (float) numColumns;
-    for (int i = 1; i < numColumns; ++i)
-    {
-        const float x = content.getX() + (float) i * columnWidthF + ((float) i - 0.5f) * (float) columnGap;
-        g.drawVerticalLine ((int) x, content.getY(), content.getBottom());
-    }
-
-    // Footer strip with small rivets, like the perforated base strip on a
-    // real rack unit.
-    auto footer = juce::Rectangle<float> (full.getX(), full.getBottom() - (float) footerStripHeight,
-                                           full.getWidth(), (float) footerStripHeight);
-    g.setColour (juce::Colours::black.withAlpha (0.12f));
-    g.fillRect (footer);
-    constexpr int numRivets = 10;
-    for (int i = 0; i < numRivets; ++i)
-    {
-        const float t = (float) (i + 1) / (float) (numRivets + 1);
-        g.setColour (currentTheme->textLight.withAlpha (0.18f));
-        g.fillEllipse (juce::Rectangle<float> (3.0f, 3.0f).withCentre ({ footer.getX() + t * footer.getWidth(), footer.getCentreY() }));
-    }
+    g.fillAll (currentTheme->paintBottom);
 }
 
 void JJBreezeAudioProcessorEditor::resized()
 {
+    rebuildPanelImage();
+
     auto area = getLocalBounds();
 
     // Inset by sideMargin (not just a flat margin) so nothing sits under
-    // the rack ears painted in paint().
+    // the rack ears.
     auto header = area.removeFromTop (headerHeight);
     header.removeFromLeft (sideMargin);
     header.removeFromRight (sideMargin);
-    header = header.reduced (0, 10);
+    header = header.reduced (0, headerPadding);
 
-    // Nameplate row: the italic wordmark and its tracked-caps subtitle,
-    // left-aligned, plus the bypass switch on the right - same row as the
-    // header text, like the design mockup's POWER switch.
-    auto titleRow = header.removeFromTop (32);
-
-    auto bypassBlock = titleRow.removeFromRight (90);
-    bypassButton.setBounds (bypassBlock.removeFromRight (24).reduced (0, 1));
-    bypassBlock.removeFromRight (8);
-    bypassCaptionLabel.setBounds (bypassBlock);
-    titleRow.removeFromRight (16); // gap before the nameplate
-
-    const int titleWidth = juce::GlyphArrangement::getStringWidthInt (titleLabel.getFont(), titleLabel.getText()) + 4;
-    titleLabel.setBounds (titleRow.removeFromLeft (titleWidth));
-    titleRow.removeFromLeft (12);
-    subtitleLabel.setBounds (titleRow);
-    header.removeFromTop (8); // gap before the controls row
-
-    // Undo/redo, the preset picker, Save/Delete and A/B compare all share
-    // one row now (used to be two) - frees a whole row's height for the
-    // knob columns below. Left to right: preset picker (capped width, not
-    // flexible - the whole point is to leave room in the middle for other
-    // things later), Save, Delete; then, right-aligned, undo/redo and A/B
-    // compare.
-    auto controlsRow = header;
-
-    compareBButton.setBounds (controlsRow.removeFromRight (28));
-    controlsRow.removeFromRight (4);
-    compareAButton.setBounds (controlsRow.removeFromRight (28));
-    controlsRow.removeFromRight (10);
-
-    redoButton.setBounds (controlsRow.removeFromRight (30));
-    controlsRow.removeFromRight (4);
-    undoButton.setBounds (controlsRow.removeFromRight (30));
-
-    presetBox.setBounds (controlsRow.removeFromLeft (220));
-    controlsRow.removeFromLeft (8);
-    saveButton.setBounds (controlsRow.removeFromLeft (46));
-    controlsRow.removeFromLeft (4);
-    deleteButton.setBounds (controlsRow.removeFromLeft (30));
-    // Whatever's left of controlsRow stays blank - reserved space.
-
-    // Same insets as paint()'s divider-line geometry above, so the hairlines
-    // between columns always land exactly at each column's edge.
-    area.removeFromTop (8); // gap before the divider
-    area.removeFromLeft (sideMargin);
-    area.removeFromRight (sideMargin);
-    area.removeFromTop (topPadding);
-    area.removeFromBottom (bottomPadding + footerStripHeight);
-
-    const bool shiftOn   = processorRef.apvts.getRawParameterValue (ParamIDs::shiftOn)->load()   > 0.5f;
-    const bool vibratoOn = processorRef.apvts.getRawParameterValue (ParamIDs::vibratoOn)->load() > 0.5f;
-    const bool warmthOn  = processorRef.apvts.getRawParameterValue (ParamIDs::warmthOn)->load()  > 0.5f;
-
-    // Shift / Vibrato / Warmth sit side by side as three equal-width
-    // columns (a wide rack-panel layout) rather than stacked rows. Every
-    // column gets the same fixed row height, sized for the tallest column
-    // (Shift and Warmth both need two knob rows; Vibrato's single row just
-    // leaves the rest of its column's height empty below it) - so, unlike
-    // the old stacked layout, turning a section off doesn't hand its space
-    // to its neighbours (they're not sharing a vertical run any more), it
-    // just collapses that column to its label bar.
-    const int columnWidth = (area.getWidth() - numColumnGaps * columnGap) / numColumns;
-    const int rowHeight = (area.getHeight() - sectionLabelHeight) / maxKnobRows;
-
-    auto layoutColumn = [&] (juce::Rectangle<int> column, LedToggleButton& toggle, juce::Label& sectionLabel,
-                              bool on, std::initializer_list<std::initializer_list<LabelledKnob*>> rows)
+    // Everything the header carries sits on one row, as it does on the
+    // AUv3 sibling's panel: wordmark, presets, undo/redo, A/B, power. The
+    // flat controls are shorter than the row (which is as tall as the
+    // power switch needs), so each is centred in the height it's given.
+    auto centred = [] (juce::Rectangle<int> slot)
     {
-        auto fullLabelRow = column.removeFromTop (sectionLabelHeight);
-        auto labelRow = fullLabelRow;
-        toggle.setBounds (labelRow.removeFromRight (toggleWidth).reduced (0, 1));
+        return slot.withSizeKeepingCentre (slot.getWidth(), headerControlHeight);
+    };
+
+    // Right-hand end first, so the preset picker in the middle can take
+    // whatever width is actually left over.
+    auto powerBlock = header.removeFromRight (26);
+    powerLamp.setBounds (powerBlock.removeFromTop (10).withSizeKeepingCentre (10, 10));
+    powerBlock.removeFromTop (2);
+    bypassButton.setBounds (powerBlock);
+    header.removeFromRight (6);
+    bypassCaptionLabel.setBounds (header.removeFromRight (46));
+    header.removeFromRight (14);
+
+    compareBButton.setBounds (centred (header.removeFromRight (28)));
+    header.removeFromRight (4);
+    compareAButton.setBounds (centred (header.removeFromRight (28)));
+    header.removeFromRight (12);
+
+    redoButton.setBounds (centred (header.removeFromRight (30)));
+    header.removeFromRight (4);
+    undoButton.setBounds (centred (header.removeFromRight (30)));
+    header.removeFromRight (14);
+
+    // Left-hand end: the finish selector and the italic wordmark.
+    finishSelector.setBounds (header.removeFromLeft (26).withSizeKeepingCentre (26, 26));
+    header.removeFromLeft (10);
+    const int titleWidth = juce::GlyphArrangement::getStringWidthInt (titleLabel.getFont(), titleLabel.getText()) + 6;
+    titleLabel.setBounds (header.removeFromLeft (titleWidth));
+    header.removeFromLeft (14);
+
+    // The preset picker fills the gap between the two, capped so it doesn't
+    // stretch right across a resized-up window, with Save/Delete after it.
+    constexpr int saveAndDeleteWidth = 46 + 4 + 28 + 8; // both buttons, plus the gaps around them
+    presetBox.setBounds (centred (header.removeFromLeft (
+        juce::jlimit (110, 260, header.getWidth() - saveAndDeleteWidth))));
+    header.removeFromLeft (8);
+    saveButton.setBounds (centred (header.removeFromLeft (46)));
+    header.removeFromLeft (4);
+    deleteButton.setBounds (centred (header.removeFromLeft (28)));
+    // Whatever's left of the row stays blank - reserved space.
+
+    // Each section's controls, mounted on the sub-plate painted for it by
+    // rebuildPanelImage(). A section that's switched off keeps its plate,
+    // its name and its switch - only its knobs dim (see
+    // updateSectionEnablement()), so nothing on the panel moves.
+    auto layoutSection = [&] (juce::Rectangle<int> plate, BatSwitchButton& toggle, juce::Label& sectionLabel,
+                               JewelLampComponent& lamp,
+                               std::initializer_list<std::initializer_list<LabelledKnob*>> rows)
+    {
+        auto inner = plate.reduced (platePaddingX, 0);
+        inner.removeFromTop (platePaddingTop);
+        inner.removeFromBottom (platePaddingBottom);
+
+        auto labelRow = inner.removeFromTop (sectionLabelHeight);
+        lamp.setBounds (labelRow.removeFromLeft (lampSize).withSizeKeepingCentre (lampSize, lampSize));
+        labelRow.removeFromLeft (7);
+        toggle.setBounds (labelRow.removeFromRight (toggleWidth));
         labelRow.removeFromRight (6);
         sectionLabel.setBounds (labelRow);
 
-        for (auto& row : rows)
-            for (auto* knob : row)
-                knob->setVisible (on);
-
-        if (! on)
-            return;
-
+        // Every section uses the same row height, sized for the tallest one
+        // (Shift and Warmth both need two rows) - so a single-row section's
+        // knobs draw exactly as big as everyone else's, as they would if
+        // all three modules were cut from the same rack panel.
+        const int rowHeight = inner.getHeight() / maxKnobRows;
         for (auto& row : rows)
         {
-            auto rowArea = column.removeFromTop (rowHeight);
+            auto rowArea = inner.removeFromTop (rowHeight);
             const int knobWidth = rowArea.getWidth() / (int) row.size();
             for (size_t i = 0; i < row.size(); ++i)
             {
@@ -683,32 +802,38 @@ void JJBreezeAudioProcessorEditor::resized()
                 // The last knob in the row takes whatever's left, absorbing
                 // any rounding remainder, rather than one more equal slice.
                 auto slot = (i + 1 == row.size()) ? rowArea : rowArea.removeFromLeft (knobWidth);
-                knob->setBounds (slot.reduced (8));
+                knob->setBounds (slot.reduced (knobSlotMargin, 4));
             }
         }
     };
 
-    auto shiftColumn = area.removeFromLeft (columnWidth);
-    area.removeFromLeft (columnGap);
-    auto vibratoColumn = area.removeFromLeft (columnWidth);
-    area.removeFromLeft (columnGap);
-    auto warmthColumn = area; // takes whatever's left, absorbing rounding remainder
+    const auto plates = sectionPlateBounds();
 
-    layoutColumn (shiftColumn, shiftToggle, shiftSectionLabel, shiftOn,
-                  { { &pitchLKnob, &pitchRKnob, &focusKnob }, { &delayLKnob, &delayRKnob, &mixKnob } });
+    // The diameter every knob draws at: the width one knob gets in a
+    // three-across row, so Warmth's two-across rows don't draw bigger ones.
+    // Mirrors the AUv3 sibling's knobDiameter(forPanelWidth:).
+    const int knobSlot = (plates[0].getWidth() - platePaddingX * 2) / 3 - knobSlotMargin * 2;
+    for (auto* knob : { &pitchLKnob, &pitchRKnob, &delayLKnob, &delayRKnob, &focusKnob, &mixKnob,
+                         &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob,
+                         &warmthToneKnob, &warmthDriveKnob, &warmthBodyKnob, &warmthMixKnob })
+        knob->setKnobDiameterCap (juce::jlimit (44, 104, knobSlot));
 
-    layoutColumn (vibratoColumn, vibratoToggle, vibratoSectionLabel, vibratoOn,
-                  { { &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob } });
+    layoutSection (plates[0], shiftToggle, shiftSectionLabel, shiftLamp,
+                    { { &pitchLKnob, &pitchRKnob, &focusKnob }, { &delayLKnob, &delayRKnob, &mixKnob } });
 
-    layoutColumn (warmthColumn, warmthToggle, warmthSectionLabel, warmthOn,
-                  { { &warmthToneKnob, &warmthDriveKnob }, { &warmthBodyKnob, &warmthMixKnob } });
+    layoutSection (plates[1], vibratoToggle, vibratoSectionLabel, vibratoLamp,
+                    { { &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob } });
 
-    // Version readout, centred in the thin gap just above the rivet strip
-    // — computed from the untouched full bounds rather than the already-
-    // consumed `area`, same as the rack ears/footer strip in paint().
+    layoutSection (plates[2], warmthToggle, warmthSectionLabel, warmthLamp,
+                    { { &warmthToneKnob, &warmthDriveKnob }, { &warmthBodyKnob, &warmthMixKnob } });
+
+    // The stamped nameplate, riveted centrally between the plates and the
+    // base rail - only as wide as its own lettering, like the real thing.
     {
         const auto full = getLocalBounds();
-        versionLabel.setBounds (full.getX() + sideMargin, full.getBottom() - footerStripHeight - bottomPadding,
-                                 full.getWidth() - sideMargin * 2, bottomPadding);
+        const int plateWidth = juce::jmin (modelPlate.getPreferredWidth(), full.getWidth() - sideMargin * 2);
+        modelPlate.setBounds (juce::Rectangle<int> (plateWidth, modelPlateHeight)
+                                  .withCentre ({ full.getCentreX(),
+                                                 full.getBottom() - footerStripHeight - modelPlateGap - modelPlateHeight / 2 }));
     }
 }
