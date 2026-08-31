@@ -11,3 +11,11 @@ dist/
 # it holds Developer ID identity names, the Apple ID and an app-specific
 # password.
 scripts/.env
+
+# The AAX SDK: AAX/aax-sdk-<version>.zip is the download from Avid's developer
+# site, unpacked next to itself by scripts/aax-sdk.sh on first use. Neither is
+# ours to redistribute, so nothing in AAX/ is committed — except the note that
+# says what to drop in there, which is the whole point of the directory
+# existing in a fresh clone.
+/AAX/*
+!/AAX/README.md

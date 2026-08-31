@@ -28,12 +28,37 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
+# AAX (Pro Tools) is built only when Avid's SDK is at hand. That SDK may not
+# be redistributed, so its path is handed in from outside rather than assumed:
+# scripts/aax-sdk.sh (aax-sdk.ps1 on Windows) unpacks AAX/aax-sdk-*.zip and
+# prints the path the dist scripts pass in here. Left empty — the default, and
+# what a checkout without the SDK gets — the build produces AU, VST3 and
+# Standalone exactly as before.
+set(JJ_BREEZE_AAX_SDK_PATH "" CACHE PATH "Path to an unpacked AAX SDK; empty builds no AAX (see scripts/aax-sdk.sh)")
+
+set(JJ_BREEZE_FORMATS AU VST3 Standalone)
+
+if(JJ_BREEZE_AAX_SDK_PATH)
+    juce_set_aax_sdk_path("${JJ_BREEZE_AAX_SDK_PATH}")
+    list(APPEND JJ_BREEZE_FORMATS AAX)
+
+    # JUCE would otherwise copy the built .aaxplugin into the machine-wide
+    # Avid plug-ins folder after every build, the way it does for AU and VST3.
+    # Unlike those, that folder is not writable without elevation, so the copy
+    # would fail the build for everyone who has the SDK. Clearing the property
+    # (JUCE reads it during juce_add_plugin below, so it has to happen here)
+    # drops the step; the dist scripts and installers place the plugin instead.
+    set_property(DIRECTORY PROPERTY JUCE_AAX_COPY_DIR "")
+
+    message(STATUS "AAX SDK found, building the AAX format too: ${JJ_BREEZE_AAX_SDK_PATH}")
+endif()
+
 juce_add_plugin(jj_breeze
     COMPANY_NAME "Gerov"
     BUNDLE_ID "com.gerov.jjbreeze"
     PLUGIN_MANUFACTURER_CODE Grov
     PLUGIN_CODE Jjbz
-    FORMATS AU VST3 Standalone
+    FORMATS ${JJ_BREEZE_FORMATS}
     PRODUCT_NAME "j.j.breeze"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE

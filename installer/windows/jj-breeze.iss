@@ -6,6 +6,11 @@
 ;
 ;   ISCC.exe /DProductName=... /DAppVersion=... /DArtefactsDir=... /DOutputDir=... jj-breeze.iss
 ;
+; /DWithAax adds the AAX (Pro Tools) component. dist-windows.ps1 passes it only
+; when the build actually produced an .aaxplugin, i.e. when the AAX SDK was
+; available (see scripts\aax-sdk.ps1); without it this is the VST3 + Standalone
+; installer it has always been.
+;
 ; Requires Inno Setup 6.3 or newer (for "x64compatible").
 
 #ifndef ProductName
@@ -59,6 +64,9 @@ Name: "custom"; Description: "Custom"; Flags: iscustom
 [Components]
 Name: "vst3"; Description: "VST3 plug-in"; Types: full custom
 Name: "standalone"; Description: "Standalone application"; Types: full custom
+#ifdef WithAax
+Name: "aax"; Description: "AAX plug-in (Pro Tools)"; Types: full custom
+#endif
 
 [Files]
 ; VST3 on Windows is a bundle *directory* (Contents\x86_64-win\...), not a
@@ -71,6 +79,15 @@ Source: "{#ArtefactsDir}\VST3\{#ProductName}.vst3\*"; \
 
 Source: "{#ArtefactsDir}\Standalone\{#ProductName}.exe"; \
     DestDir: "{app}"; Flags: ignoreversion; Components: standalone
+
+#ifdef WithAax
+; AAX is a bundle directory too (Contents\x64\...). {commoncf64}\Avid\Audio\Plug-Ins
+; is the only place Pro Tools scans, and the same one JUCE's own post-build
+; copy targets.
+Source: "{#ArtefactsDir}\AAX\{#ProductName}.aaxplugin\*"; \
+    DestDir: "{commoncf64}\Avid\Audio\Plug-Ins\{#ProductName}.aaxplugin"; \
+    Flags: ignoreversion recursesubdirs createallsubdirs; Components: aax
+#endif
 
 [Icons]
 Name: "{autoprograms}\{#ProductName}"; Filename: "{app}\{#ProductName}.exe"; Components: standalone
@@ -85,3 +102,6 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; \
 ; Inno removes the files it installed, but not the bundle directory itself
 ; once JUCE or a host has left anything behind inside it.
 Type: filesandordirs; Name: "{commoncf64}\VST3\{#ProductName}.vst3"
+#ifdef WithAax
+Type: filesandordirs; Name: "{commoncf64}\Avid\Audio\Plug-Ins\{#ProductName}.aaxplugin"
+#endif

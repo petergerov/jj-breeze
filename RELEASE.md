@@ -11,11 +11,15 @@ For day-to-day development builds see the **Building** section of
 
 | Platform | Formats | Installer | Installs to |
 | --- | --- | --- | --- |
-| macOS (Apple Silicon) | AU, VST3, Standalone | `dist/jj-breeze-<version>-macos.pkg` | `/Library/Audio/Plug-Ins/Components`, `/Library/Audio/Plug-Ins/VST3`, `/Applications` |
-| Windows (x64) | VST3, Standalone | `dist/jj-breeze-<version>-windows.exe` | `C:\Program Files\Common Files\VST3`, `C:\Program Files\Gerov\j.j.breeze` |
+| macOS (Apple Silicon) | AU, VST3, Standalone (+ AAX) | `dist/jj-breeze-<version>-macos.pkg` | `/Library/Audio/Plug-Ins/Components`, `/Library/Audio/Plug-Ins/VST3`, `/Applications` (+ `/Library/Application Support/Avid/Audio/Plug-Ins`) |
+| Windows (x64) | VST3, Standalone (+ AAX) | `dist/jj-breeze-<version>-windows.exe` | `C:\Program Files\Common Files\VST3`, `C:\Program Files\Gerov\j.j.breeze` (+ `C:\Program Files\Common Files\Avid\Audio\Plug-Ins`) |
 
 AU is Apple-only; JUCE's CMake API drops it automatically on Windows, so the
 `FORMATS` list in `CMakeLists.txt` stays the same for both platforms.
+
+AAX is in brackets because it is conditional: it is built and packaged only on
+a machine that has Avid's AAX SDK, and it needs one further step (PACE signing)
+before Pro Tools will load it. See [AAX (Pro Tools)](#aax-pro-tools) below.
 
 There is also `scripts/dist-macos.sh`, which zips the three macOS artefacts
 as-is for someone who would rather drag them into place themselves. It is not
@@ -243,6 +247,84 @@ replacing it.
 
 ---
 
+## AAX (Pro Tools)
+
+AAX is optional throughout. Nothing about it is required to build or ship the
+formats above, and a checkout without the SDK behaves exactly as it did before
+AAX existed here — no error, no extra flag.
+
+### Getting the SDK in place
+
+The AAX SDK is Avid's, under an NDA-ish licence, and may not be redistributed,
+so it is not committed. Download `aax-sdk-<version>.zip` from your Avid
+developer account (<https://developer.avid.com>) and drop it into `AAX/`:
+
+```
+AAX/aax-sdk-2-9-0.zip
+```
+
+That is the whole setup. `scripts/aax-sdk.sh` (`scripts/aax-sdk.ps1` on
+Windows) unpacks it next to itself on first use and prints the path; every
+build script calls it and passes the result to CMake as
+`-DJJ_BREEZE_AAX_SDK_PATH=`. Both the zip and the unpacked directory are
+gitignored.
+
+```sh
+scripts/aax-sdk.sh          # prints the SDK path, unpacking on first run
+                            # exits 1 (and builds stay AU/VST3/Standalone) if there is none
+AAX_SDK_PATH=/elsewhere/aax-sdk-2-9-0 scripts/dist-macos-pkg.sh   # use an SDK from elsewhere
+```
+
+With the SDK present these all pick AAX up on their own, and each takes
+`--no-aax` (`-NoAax` on Windows) to leave it out again:
+
+| Script | What it does with AAX |
+| --- | --- |
+| `scripts/install-local.sh` | Builds it; prints the elevated `cp` to install it (see below) |
+| `scripts/dist-macos.sh` | Adds `j.j.breeze.aaxplugin` to the zip |
+| `scripts/dist-macos-pkg.sh` | Adds an "AAX (Pro Tools)" component to the `.pkg` |
+| `scripts/dist-windows.ps1` | Adds an "AAX plug-in (Pro Tools)" component to the installer |
+
+### PACE signing — the part that is missing
+
+**Pro Tools will not load the `.aaxplugin` these scripts produce.** Every AAX
+plugin, including a locally built one, has to be signed with Avid's PACE
+`wraptool` against a developer certificate before any shipping Pro Tools will
+even list it. That needs an Avid developer account and an Eden/iLok signing
+certificate, neither of which this repo has, so no build script attempts it.
+
+Once you have those, the step belongs immediately after the build and before
+packaging, roughly:
+
+```sh
+wraptool sign --verbose \
+    --account   <avid-developer-account> \
+    --wcguid    <your-wrap-config-guid> \
+    --signid    "Developer ID Application: Petar Gerov (C9LBGZNZ6P)" \
+    --in  build/jj_breeze_artefacts/Release/AAX/j.j.breeze.aaxplugin \
+    --out build/jj_breeze_artefacts/Release/AAX/j.j.breeze.aaxplugin
+```
+
+Until then the AAX artefact is good for a development build of Pro Tools only,
+and every script that produces one says so on the way out.
+
+### Install locations
+
+There is no per-user AAX folder — Pro Tools scans exactly one machine-wide
+path, which is why `install-local.sh` can place the AU and VST3 but only
+*prints* the AAX copy for you to run under `sudo`:
+
+| Platform | Path |
+| --- | --- |
+| macOS | `/Library/Application Support/Avid/Audio/Plug-Ins` |
+| Windows | `C:\Program Files\Common Files\Avid\Audio\Plug-Ins` |
+
+For the same reason `CMakeLists.txt` clears JUCE's `JUCE_AAX_COPY_DIR`: the
+automatic post-build copy that works for AU and VST3 would need elevation for
+AAX and would fail every build. The installers place it instead.
+
+---
+
 ## GitHub Actions
 
 All four workflows are `workflow_dispatch` only — run them from the Actions
@@ -375,5 +457,10 @@ Recorded honestly so nobody assumes more coverage than exists:
   its pass and fail paths) and the credential handling in
   `notarize-macos-pkg.sh` are verified; submit, staple and the final Gatekeeper
   assessment need real Apple credentials and have not been exercised.
+- The **AAX build is compile-and-package only.** The macOS `.aaxplugin` builds,
+  signs and lands in both the zip and the `.pkg`; it has never been loaded in
+  Pro Tools, because that needs the PACE `wraptool` signing described above.
+  The Windows AAX path (Inno Setup component, `signtool` on the bundle's inner
+  binary) is untested for the same reason the rest of the Windows installer is.
 - No release has been tagged. `git tag` is empty, and no workflow triggers on
   tags — versioning is whatever is in `CMakeLists.txt` at build time.

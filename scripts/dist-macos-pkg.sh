@@ -6,6 +6,12 @@
 #   Audio Unit (AU) -> /Library/Audio/Plug-Ins/Components
 #   VST3            -> /Library/Audio/Plug-Ins/VST3
 #   Standalone app  -> /Applications
+#   AAX             -> /Library/Application Support/Avid/Audio/Plug-Ins
+#                       (only when the AAX SDK is available — see
+#                        scripts/aax-sdk.sh. Note that Pro Tools loads an AAX
+#                        plugin only once it has been PACE-signed with Avid's
+#                        wraptool; this script does not do that. See the AAX
+#                        section of RELEASE.md.)
 #
 # (dist-macos.sh instead zips the three artefacts as-is, for someone who'll
 # just drag them into place themselves. This produces a real double-click
@@ -13,9 +19,10 @@
 # plugins ship.)
 #
 # Usage:
-#   scripts/dist-macos-pkg.sh [--clean] [--notarize]
+#   scripts/dist-macos-pkg.sh [--clean] [--notarize] [--no-aax]
 #
 #   --clean      Remove build/ first (forces a full rebuild).
+#   --no-aax     Skip the AAX build even if the SDK is there.
 #   --notarize   After building the .pkg, submit it to Apple's notary
 #                service and staple the ticket so Gatekeeper doesn't warn
 #                on other Macs. Requires a one-time setup on this machine:
@@ -58,10 +65,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/load-env.sh"
 
 DO_CLEAN=0
 DO_NOTARIZE=0
+WITH_AAX=1
 for arg in "$@"; do
     case "$arg" in
         --clean) DO_CLEAN=1 ;;
         --notarize) DO_NOTARIZE=1 ;;
+        --no-aax) WITH_AAX=0 ;;
         *)
             echo "error: unknown argument: $arg" >&2
             exit 1
@@ -96,19 +105,41 @@ if [[ -z "$PRODUCT_NAME" ]]; then
     exit 1
 fi
 
-echo "==> Building $PRODUCT_NAME $VERSION (Release)"
+# An absent SDK is the normal case, not a failure: aax-sdk.sh exits 1 and the
+# package is built without the AAX component, exactly as it was before. Only
+# an SDK that is present but broken stops us, with an explicit error from that
+# script rather than a FATAL_ERROR out of CMake.
+AAX_SDK=""
+if [[ "$WITH_AAX" == "1" ]]; then
+    AAX_SDK="$("$ROOT_DIR/scripts/aax-sdk.sh")" || AAX_SDK=""
+fi
+
+if [[ -n "$AAX_SDK" ]]; then
+    echo "==> Building $PRODUCT_NAME $VERSION (Release, with AAX)"
+else
+    echo "==> Building $PRODUCT_NAME $VERSION (Release)"
+fi
 # COPY_PLUGIN_AFTER_BUILD off: this script places the signed artefacts into
 # a package instead, so the ad-hoc copy JUCE would otherwise do to this
 # machine's own plugin folders is just noise here.
-cmake -B "$BUILD_DIR" -G Xcode -DCMAKE_BUILD_TYPE=Release -DJJ_BREEZE_COPY_PLUGIN_AFTER_BUILD=OFF
+cmake -B "$BUILD_DIR" -G Xcode -DCMAKE_BUILD_TYPE=Release -DJJ_BREEZE_COPY_PLUGIN_AFTER_BUILD=OFF \
+    -DJJ_BREEZE_AAX_SDK_PATH="$AAX_SDK"
 cmake --build "$BUILD_DIR" --config Release
 
 ARTEFACTS_DIR="$BUILD_DIR/jj_breeze_artefacts/Release"
 AU_PATH="$ARTEFACTS_DIR/AU/$PRODUCT_NAME.component"
 VST3_PATH="$ARTEFACTS_DIR/VST3/$PRODUCT_NAME.vst3"
 STANDALONE_PATH="$ARTEFACTS_DIR/Standalone/$PRODUCT_NAME.app"
+AAX_PATH="$ARTEFACTS_DIR/AAX/$PRODUCT_NAME.aaxplugin"
 
-for path in "$AU_PATH" "$VST3_PATH" "$STANDALONE_PATH"; do
+# One list from here on, so signing and staging can't drift apart over which
+# artefacts this build actually produced.
+ARTEFACTS=("$AU_PATH" "$VST3_PATH" "$STANDALONE_PATH")
+if [[ -n "$AAX_SDK" ]]; then
+    ARTEFACTS+=("$AAX_PATH")
+fi
+
+for path in "${ARTEFACTS[@]}"; do
     if [[ ! -e "$path" ]]; then
         echo "error: expected build artefact not found: $path" >&2
         exit 1
@@ -117,7 +148,7 @@ done
 
 if [[ -n "${APP_SIGN_IDENTITY:-}" ]]; then
     echo "==> Signing artefacts with: $APP_SIGN_IDENTITY"
-    for path in "$AU_PATH" "$VST3_PATH" "$STANDALONE_PATH"; do
+    for path in "${ARTEFACTS[@]}"; do
         codesign --force --deep --options runtime --timestamp \
             --sign "$APP_SIGN_IDENTITY" "$path"
     done
@@ -137,6 +168,14 @@ cp -R "$AU_PATH" "$AU_ROOT/"
 cp -R "$VST3_PATH" "$VST3_ROOT/"
 cp -R "$STANDALONE_PATH" "$APP_ROOT/"
 
+if [[ -n "$AAX_SDK" ]]; then
+    # The one location Pro Tools scans; there is no per-user equivalent, which
+    # is why AAX has to come through an installer rather than a drag-and-drop.
+    AAX_ROOT="$STAGE_DIR/aax-root/Library/Application Support/Avid/Audio/Plug-Ins"
+    mkdir -p "$AAX_ROOT"
+    cp -R "$AAX_PATH" "$AAX_ROOT/"
+fi
+
 mkdir -p "$DIST_DIR"
 PKG_COMPONENTS_DIR="$BUILD_DIR/pkg-components"
 rm -rf "$PKG_COMPONENTS_DIR"
@@ -149,10 +188,32 @@ pkgbuild --root "$STAGE_DIR/vst3-root" --identifier com.gerov.jjbreeze.vst3 \
     --version "$VERSION" --install-location / "$PKG_COMPONENTS_DIR/VST3.pkg" >/dev/null
 pkgbuild --root "$STAGE_DIR/app-root" --identifier com.gerov.jjbreeze.standalone \
     --version "$VERSION" --install-location / "$PKG_COMPONENTS_DIR/Standalone.pkg" >/dev/null
+if [[ -n "$AAX_SDK" ]]; then
+    pkgbuild --root "$STAGE_DIR/aax-root" --identifier com.gerov.jjbreeze.aax \
+        --version "$VERSION" --install-location / "$PKG_COMPONENTS_DIR/AAX.pkg" >/dev/null
+fi
 
 # --- Distribution XML (lets the installer show three checkboxes, one per
 # component, instead of an opaque single blob) + productbuild -> final .pkg ---
 DISTRIBUTION_XML="$BUILD_DIR/distribution.xml"
+
+# The AAX component only exists in a build that had the SDK, so its three
+# lines of markup (and its line in the welcome text) are substituted in as
+# variables rather than kept as a second, near-identical copy of the whole
+# document under an if.
+AAX_OUTLINE=""
+AAX_CHOICE=""
+AAX_PKG_REF=""
+AAX_WELCOME_LINE=""
+if [[ -n "$AAX_SDK" ]]; then
+    AAX_OUTLINE='        <line choice="aax"/>'
+    AAX_CHOICE='    <choice id="aax" title="AAX (Pro Tools)">
+        <pkg-ref id="com.gerov.jjbreeze.aax"/>
+    </choice>'
+    AAX_PKG_REF="    <pkg-ref id=\"com.gerov.jjbreeze.aax\" version=\"$VERSION\" onConclusion=\"none\">AAX.pkg</pkg-ref>"
+    AAX_WELCOME_LINE=" - AAX (Pro Tools) -> /Library/Application Support/Avid/Audio/Plug-Ins"
+fi
+
 cat > "$DISTRIBUTION_XML" <<XML
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="1">
@@ -163,6 +224,7 @@ cat > "$DISTRIBUTION_XML" <<XML
         <line choice="au"/>
         <line choice="vst3"/>
         <line choice="standalone"/>
+$AAX_OUTLINE
     </choices-outline>
     <choice id="au" title="Audio Unit (AU)">
         <pkg-ref id="com.gerov.jjbreeze.au"/>
@@ -173,9 +235,11 @@ cat > "$DISTRIBUTION_XML" <<XML
     <choice id="standalone" title="Standalone app">
         <pkg-ref id="com.gerov.jjbreeze.standalone"/>
     </choice>
+$AAX_CHOICE
     <pkg-ref id="com.gerov.jjbreeze.au" version="$VERSION" onConclusion="none">AU.pkg</pkg-ref>
     <pkg-ref id="com.gerov.jjbreeze.vst3" version="$VERSION" onConclusion="none">VST3.pkg</pkg-ref>
     <pkg-ref id="com.gerov.jjbreeze.standalone" version="$VERSION" onConclusion="none">Standalone.pkg</pkg-ref>
+$AAX_PKG_REF
 </installer-gui-script>
 XML
 
@@ -185,6 +249,7 @@ This installs jj-breeze $VERSION:
  - Audio Unit  -> /Library/Audio/Plug-Ins/Components
  - VST3        -> /Library/Audio/Plug-Ins/VST3
  - Standalone app -> /Applications
+$AAX_WELCOME_LINE
 
 Restart your DAW (or rescan plugins) afterwards.
 TXT
@@ -221,3 +286,7 @@ if [[ "$DO_NOTARIZE" == "1" ]]; then
 fi
 
 echo "==> Done: $FINAL_PKG"
+if [[ -n "$AAX_SDK" ]]; then
+    echo "    note: the AAX component is not PACE-signed, so Pro Tools will"
+    echo "          refuse to load it — see the AAX section of RELEASE.md"
+fi

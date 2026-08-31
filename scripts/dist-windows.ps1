@@ -10,12 +10,22 @@
 
         VST3            -> C:\Program Files\Common Files\VST3
         Standalone app  -> C:\Program Files\Gerov\<product>  (+ Start menu entry)
+        AAX             -> C:\Program Files\Common Files\Avid\Audio\Plug-Ins
+
+    The AAX component is built and packaged only when the AAX SDK is available
+    (see scripts\aax-sdk.ps1); without it this produces the same VST3 +
+    Standalone installer it always did. Note that Pro Tools loads an AAX
+    plugin only once it has been PACE-signed with Avid's wraptool, which this
+    script does not do - see the AAX section of RELEASE.md.
 
     Inno Setup 6.3+ must be installed (it is preinstalled on GitHub's
     windows-2022 runners). Download: https://jrsoftware.org/isdl.php
 
 .PARAMETER Clean
     Remove build\ first, forcing a full rebuild.
+
+.PARAMETER NoAax
+    Skip the AAX build even if the SDK is there.
 
 .PARAMETER CertPath
     Path to a .pfx code-signing certificate. When omitted (the default), the
@@ -39,6 +49,7 @@
 [CmdletBinding()]
 param(
     [switch]$Clean,
+    [switch]$NoAax,
     [string]$CertPath = $env:WINDOWS_CERT_PFX,
     [string]$CertPassword = $env:WINDOWS_CERT_PASSWORD,
     [string]$TimestampUrl = 'http://timestamp.digicert.com'
@@ -118,11 +129,29 @@ try {
     }
     $ProductName = $nameMatch.Groups[1].Value
 
-    Write-Host "==> Building $ProductName $Version (Release)"
+    # An absent SDK is the normal case, not a failure: aax-sdk.ps1 exits 1 and
+    # the installer is built without the AAX component, exactly as before. Only
+    # an SDK that is present but broken stops us, with an explicit error from
+    # that script rather than a FATAL_ERROR out of CMake.
+    $AaxSdk = ''
+    if (-not $NoAax) {
+        # Seeded because Set-StrictMode makes reading an as-yet-unset
+        # $LASTEXITCODE an error, and no native command has run at this point.
+        $global:LASTEXITCODE = 0
+        $sdkOutput = & (Join-Path $PSScriptRoot 'aax-sdk.ps1')
+        if ($LASTEXITCODE -eq 0 -and $sdkOutput) { $AaxSdk = "$sdkOutput".Trim() }
+    }
+
+    if ($AaxSdk) {
+        Write-Host "==> Building $ProductName $Version (Release, with AAX)"
+    } else {
+        Write-Host "==> Building $ProductName $Version (Release)"
+    }
     # COPY_PLUGIN_AFTER_BUILD off: that post-build step writes into
     # C:\Program Files\Common Files\VST3, which needs elevation. The installer
     # this script produces is what puts the plugin there instead.
-    cmake -B $BuildDir -G 'Visual Studio 17 2022' -A x64 -DJJ_BREEZE_COPY_PLUGIN_AFTER_BUILD=OFF
+    cmake -B $BuildDir -G 'Visual Studio 17 2022' -A x64 -DJJ_BREEZE_COPY_PLUGIN_AFTER_BUILD=OFF `
+        "-DJJ_BREEZE_AAX_SDK_PATH=$AaxSdk"
     Assert-ExitCode 'cmake configure'
     cmake --build $BuildDir --config Release --parallel
     Assert-ExitCode 'cmake build'
@@ -134,7 +163,15 @@ try {
     $Vst3BundlePath = Join-Path $ArtefactsDir "VST3\$ProductName.vst3"
     $Vst3BinaryPath = Join-Path $Vst3BundlePath "Contents\x86_64-win\$ProductName.vst3"
 
-    foreach ($path in @($StandalonePath, $Vst3BundlePath, $Vst3BinaryPath)) {
+    # Like the VST3, the AAX "file" is a bundle directory; its binary sits at
+    # Contents\x64\ inside it and is what signtool has to be pointed at.
+    $AaxBundlePath = Join-Path $ArtefactsDir "AAX\$ProductName.aaxplugin"
+    $AaxBinaryPath = Join-Path $AaxBundlePath "Contents\x64\$ProductName.aaxplugin"
+
+    $expected = @($StandalonePath, $Vst3BundlePath, $Vst3BinaryPath)
+    if ($AaxSdk) { $expected += @($AaxBundlePath, $AaxBinaryPath) }
+
+    foreach ($path in $expected) {
         if (-not (Test-Path $path)) {
             throw "expected build artefact not found: $path"
         }
@@ -161,9 +198,12 @@ try {
             throw 'signing was requested but signtool.exe could not be found (install the Windows SDK)'
         }
 
+        $ToSign = @($StandalonePath, $Vst3BinaryPath)
+        if ($AaxSdk) { $ToSign += $AaxBinaryPath }
+
         Write-Host "==> Signing binaries with $CertPath"
         & $SignTool sign /f $CertPath /p $CertPassword /fd SHA256 `
-            /tr $TimestampUrl /td SHA256 $StandalonePath $Vst3BinaryPath
+            /tr $TimestampUrl /td SHA256 @ToSign
         Assert-ExitCode 'signtool sign (binaries)'
     }
 
@@ -181,13 +221,19 @@ try {
     New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
     $OutputDir = Join-Path $RootDir $DistDir
 
+    # /DWithAax is what switches the AAX component on in the .iss; leaving it
+    # undefined (the no-SDK case) is what keeps the installer unchanged.
+    $isccArgs = @(
+        "/DProductName=$ProductName",
+        "/DAppVersion=$Version",
+        "/DArtefactsDir=$ArtefactsDir",
+        "/DOutputDir=$OutputDir"
+    )
+    if ($AaxSdk) { $isccArgs += '/DWithAax' }
+    $isccArgs += 'installer\windows\jj-breeze.iss'
+
     Write-Host '==> Building installer with Inno Setup'
-    & $iscc `
-        "/DProductName=$ProductName" `
-        "/DAppVersion=$Version" `
-        "/DArtefactsDir=$ArtefactsDir" `
-        "/DOutputDir=$OutputDir" `
-        'installer\windows\jj-breeze.iss'
+    & $iscc @isccArgs
     Assert-ExitCode 'ISCC'
 
     $InstallerPath = Join-Path $OutputDir "jj-breeze-$Version-windows.exe"
@@ -206,6 +252,10 @@ try {
     }
 
     Write-Host "==> Done: $InstallerPath"
+    if ($AaxSdk) {
+        Write-Host '    note: the AAX component is not PACE-signed, so Pro Tools will'
+        Write-Host '          refuse to load it - see the AAX section of RELEASE.md'
+    }
 }
 finally {
     Pop-Location

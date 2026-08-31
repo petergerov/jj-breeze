@@ -275,7 +275,8 @@ cmake -B build -G Xcode -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-This builds three targets:
+This builds three targets (four with the AAX SDK in place — see
+[RELEASE.md](RELEASE.md#aax-pro-tools)):
 
 - **AU** and **VST3** — automatically copied to
   `~/Library/Audio/Plug-Ins/Components` and
@@ -286,6 +287,15 @@ This builds three targets:
   at `build/jj_breeze_artefacts/Release/Standalone/jj-breeze.app`.
 
 ### Scripts
+
+- **`scripts/aax-sdk.sh`** — prints the path to the AAX (Pro Tools) SDK,
+  unpacking `AAX/aax-sdk-<version>.zip` on first use. Every script below calls
+  it and builds the AAX format too when it succeeds; when there is no SDK it
+  exits quietly and the build is AU/VST3/Standalone as always. Each of those
+  scripts also takes `--no-aax` to skip AAX even when the SDK is there. The
+  SDK is Avid's and is not committed — drop your download into `AAX/`. Note
+  that Pro Tools only loads AAX plugins that have been PACE-signed, which none
+  of this does; see the [AAX section of RELEASE.md](RELEASE.md#aax-pro-tools).
 
 - **`scripts/install-local.sh`** — builds AU, VST3 and Standalone and
   installs them into the standard per-user locations
@@ -298,6 +308,7 @@ This builds three targets:
   scripts/install-local.sh --debug             # Debug build
   scripts/install-local.sh --clean              # wipe build/ first
   scripts/install-local.sh --no-standalone       # skip the Standalone app
+  scripts/install-local.sh --no-aax               # skip the AAX build
   ```
 
 - **`scripts/dist-macos.sh`** — builds a Release and packages AU, VST3 and
@@ -309,6 +320,7 @@ This builds three targets:
   ```sh
   scripts/dist-macos.sh                                    # sign with the default identity
   scripts/dist-macos.sh --clean                              # wipe build/ first
+  scripts/dist-macos.sh --no-aax                              # skip the AAX build
   CODESIGN_IDENTITY= scripts/dist-macos.sh                    # skip signing
   CODESIGN_IDENTITY="Developer ID Application: Name (TEAMID)" scripts/dist-macos.sh
   ```
@@ -330,14 +342,17 @@ This builds three targets:
   scripts/dist-macos-pkg.sh                    # build + sign the .pkg
   scripts/dist-macos-pkg.sh --clean              # wipe build/ first
   scripts/dist-macos-pkg.sh --notarize            # also notarize + staple
+  scripts/dist-macos-pkg.sh --no-aax               # skip the AAX component
   APP_SIGN_IDENTITY= PKG_SIGN_IDENTITY= scripts/dist-macos-pkg.sh   # unsigned .pkg
   ```
 
 ## Project layout
 
 ```
-CMakeLists.txt              JUCE plugin target (AU, VST3, Standalone)
+CMakeLists.txt              JUCE plugin target (AU, VST3, Standalone, + AAX with the SDK)
+AAX/                        Drop Avid's aax-sdk-<version>.zip here to build AAX (gitignored)
 scripts/
+  aax-sdk.sh                 Locate/unpack the AAX SDK; prints its path, exits 1 without one
   install-local.sh           Build + install AU/VST3/Standalone locally for DAW testing
   dist-macos.sh               Build + package AU/VST3/Standalone into a distributable zip
   dist-macos-pkg.sh           Build + package AU/VST3/Standalone into a signed .pkg installer
