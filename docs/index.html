@@ -441,11 +441,11 @@
   <h1>That close, <em>doubled</em> vocal.</h1>
   <p>You know the one. Laid-back, a little late, never shiny. A second voice a few cents off — not a chorus, not a slap in your face. jj-breeze is the insert for that sound, and it costs nothing.</p>
   <div class="hero-actions">
-    <a href="#download" class="btn-primary" id="hero-mac">
+    <a href="https://github.com/petergerov/jj-breeze/releases/download/v.1.0.0/jj-breeze-1.0.0-macos.pkg" class="btn-primary" id="hero-mac">
       <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
       Download for macOS
     </a>
-    <a href="#download" class="btn-ghost" id="hero-win">
+    <a href="https://github.com/petergerov/jj-breeze/releases/download/v.1.0.0/jj-breeze-windows-installer.zip" class="btn-ghost" id="hero-win">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.7 10 4.7v7.1H3V5.7Zm0 12.6 7 1v-7H3v6ZM11.2 4.5 21 3v8.8h-9.8V4.5Zm0 8.5H21V21l-9.8-1.4V13Z"/></svg>
       Download for Windows
     </a>
@@ -499,7 +499,7 @@
       <h2 class="section-title">Get it for Mac or PC</h2>
       <p class="section-sub">One installer per platform, with the plug-in formats and the standalone app inside. No account, no licence file, no trial that runs out.</p>
     </div>
-    <p class="release-line" id="release-line">Latest release on GitHub</p>
+    <p class="release-line" id="release-line">Latest release v.1.0.0 · 28 Aug 2026 · free, no account needed</p>
 
     <div class="dl-grid">
       <div class="dl-card" id="card-mac">
@@ -515,8 +515,8 @@
           <li>Standalone app — <code>/Applications</code></li>
         </ul>
         <div class="dl-spacer"></div>
-        <a class="dl-btn" id="btn-mac" href="https://github.com/petergerov/jj-breeze/releases/latest">Download the .pkg installer</a>
-        <p class="dl-meta" id="meta-mac"></p>
+        <a class="dl-btn" id="btn-mac" href="https://github.com/petergerov/jj-breeze/releases/download/v.1.0.0/jj-breeze-1.0.0-macos.pkg">Download the .pkg installer</a>
+        <p class="dl-meta" id="meta-mac">jj-breeze-1.0.0-macos.pkg · 5.5 MB</p>
       </div>
 
       <div class="dl-card" id="card-win">
@@ -530,10 +530,11 @@
           <li>VST3 — <code>Program Files\Common Files\VST3</code></li>
           <li>Standalone app — <code>Program Files\Gerov</code></li>
           <li>Start menu entry, optional desktop icon</li>
+          <li>Ships as a <code>.zip</code> — unpack it, then run the installer inside</li>
         </ul>
         <div class="dl-spacer"></div>
-        <a class="dl-btn" id="btn-win" href="https://github.com/petergerov/jj-breeze/releases/latest">Download the .exe installer</a>
-        <p class="dl-meta" id="meta-win"></p>
+        <a class="dl-btn" id="btn-win" href="https://github.com/petergerov/jj-breeze/releases/download/v.1.0.0/jj-breeze-windows-installer.zip">Download the Windows installer</a>
+        <p class="dl-meta" id="meta-win">jj-breeze-windows-installer.zip · 4.3 MB</p>
       </div>
     </div>
 
@@ -840,20 +841,36 @@
         document.getElementById("release-line").textContent =
           "Latest release " + name + (date ? " · " + date : "") + " · free, no account needed";
 
+        // Name the button after what the release actually holds. The Windows
+        // build currently ships as the CI artifact zip with the installer
+        // inside it, and calling that "the .exe" on the button would be a lie
+        // the moment someone clicks it.
+        function label(asset) {
+          if (/\.pkg$/i.test(asset.name)) return "Download the .pkg installer";
+          if (/\.dmg$/i.test(asset.name)) return "Download the .dmg";
+          if (/\.exe$/i.test(asset.name)) return "Download the .exe installer";
+          if (/\.zip$/i.test(asset.name)) return "Download the installer (.zip)";
+          return "Download " + asset.name;
+        }
+
         // The hero buttons get the direct link too, so the first click on the
         // page starts the download instead of only scrolling to it.
-        if (mac) {
-          document.getElementById("btn-mac").href = mac.browser_download_url;
-          document.getElementById("hero-mac").href = mac.browser_download_url;
-          document.getElementById("meta-mac").textContent = mac.name + " · " + humanSize(mac.size);
+        function wire(asset, btnId, heroId, metaId) {
+          if (!asset) return;
+          var btn = document.getElementById(btnId);
+          btn.href = asset.browser_download_url;
+          btn.textContent = label(asset);
+          document.getElementById(heroId).href = asset.browser_download_url;
+          document.getElementById(metaId).textContent = asset.name + " · " + humanSize(asset.size);
         }
-        if (win) {
-          document.getElementById("btn-win").href = win.browser_download_url;
-          document.getElementById("hero-win").href = win.browser_download_url;
-          document.getElementById("meta-win").textContent = win.name + " · " + humanSize(win.size);
-        }
-        if (!mac) document.getElementById("meta-mac").textContent = "No macOS installer in this release — see all releases";
-        if (!win) document.getElementById("meta-win").textContent = "No Windows installer in this release — see all releases";
+
+        wire(mac, "btn-mac", "hero-mac", "meta-mac");
+        wire(win, "btn-win", "hero-win", "meta-win");
+
+        // A release without an installer for one platform: leave the working
+        // link from the last one in place and say where to look instead.
+        if (!mac) document.getElementById("meta-mac").textContent += " — no macOS build in " + (rel.tag_name || "the newest release");
+        if (!win) document.getElementById("meta-win").textContent += " — no Windows build in " + (rel.tag_name || "the newest release");
       })
       .catch(function () {
         document.getElementById("release-line").textContent =
