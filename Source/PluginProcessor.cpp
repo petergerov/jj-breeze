@@ -322,10 +322,10 @@ juce::AudioProcessorEditor* JJBreezeAudioProcessor::createEditor()
     return new JJBreezeAudioProcessorEditor (*this);
 }
 
-const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::getPresets()
+const std::array<JJBreezeAudioProcessor::Preset, 8>& JJBreezeAudioProcessor::getPresets()
 {
     // pitchL, pitchR, delayL, delayR, focus, mix, vibratoRate, vibratoDepth, vibratoMix, warmthTone, warmthDrive, warmthBody, warmthMix, shiftOn, vibratoOn, warmthOn
-    static const std::array<Preset, 9> presets { {
+    static const std::array<Preset, 8> presets { {
         // Pitch L/R +300ct (matching sign, not opposite — a mono-compatible
         // pitch-up rather than a wide microshift) matches Pitch L/R's own
         // parameter default; see createParameterLayout() for why.
@@ -341,7 +341,54 @@ const std::array<JJBreezeAudioProcessor::Preset, 9>& JJBreezeAudioProcessor::get
         // vibrato is a light touch rather than the main event, and Warmth
         // — not vibrato — is what actually carries the "Cajun Moon"
         // character here.
-        {  "JJ Cajun Moon", 300.0f, 300.0f, 23.0f, 37.0f, 25.0f, 13.0f, 1.2f, 3.0f,  15.0f,  3500.0f, 20.0f, 0.0f, 20.0f, true,  true, true },
+        {  "JJ Moon", 300.0f, 300.0f, 23.0f, 37.0f, 25.0f, 13.0f, 1.2f, 3.0f,  15.0f,  3500.0f, 20.0f, 0.0f, 20.0f, true,  true, true },
+
+        // "JJ Call Me The Breeze": built from analyzing
+        // example/call_me_the_breaze_vocal.wav (7.25s, 44.1kHz stereo) the
+        // same way JJ Cajun Moon and JJ Lies were — no dry counterpart
+        // exists for this one, so the numbers below come from measuring the
+        // reference's own traits and then calibrating each control against
+        // them by running a dry vocal (example/lies_1.mp3, mono-summed)
+        // through this exact chain in a port of the DSP:
+        //
+        //  * Width, not detune. Stereo correlation sits at +0.81 with a
+        //    side/mid ratio of 0.35 — clearly wide — but per-frame
+        //    cross-correlation and pitch-tracking both put the L/R time
+        //    offset at 0.00ms and the L/R pitch difference at 0.0 cents,
+        //    and the width is uniform across every octave (side/mid 0.33 to
+        //    0.39 from 80Hz to 20kHz). Pitch L at -8 and Pitch R at +8
+        //    cents, with Mix 35%, land on that measurement (calibrated:
+        //    +0.78 correlation,
+        //    0.354 side/mid, and 0.0 cents of *measured* L/R difference,
+        //    since at 35% the unshifted dry still sets each channel's
+        //    pitch), and Focus at 25Hz keeps the width band-uniform the way
+        //    the reference is, rather than the default 150Hz crossover's
+        //    highs-only widening.
+        //  * Dark, but only moderately. 85% of the energy sits below
+        //    1.1kHz and the spectrum falls at -7.7 dB/oct across 1-8kHz —
+        //    darker than a typical vocal, yet twice as bright above 2kHz
+        //    (5.3% of total energy) as example/cajunmoon_vocal.mp3's 2.5%.
+        //    So Warmth is on but gentle: Tone 4kHz / Drive 25% / Mix 30%
+        //    reproduces that -7.7 dB/oct tilt (measured -7.6) instead of
+        //    JJ Cajun Moon's much heavier rolloff.
+        //  * Body stays at 0%. Warmth's shelf lifts 150Hz and below, and
+        //    the reference has almost nothing there (0.1% under 100Hz,
+        //    0.4% under 150Hz); its 200Hz-1kHz slope is also *shallower*
+        //    than the dry reference vocal's, so there is no low-end lift to
+        //    match — its warmth is top-end rolloff only.
+        //  * No vibrato and no echo. Sustained notes hold within +-10 cents
+        //    once they settle (the apparent ~1.5Hz movement is phrasing
+        //    into and out of each note, the same false positive the Cajun
+        //    Moon analysis found), and the envelope autocorrelation decays
+        //    smoothly with no repeat peak anywhere from 15 to 400ms. So
+        //    Vibrato is off, and Delay L/R stay in width territory
+        //    (12/18ms) rather than slapback territory.
+        //
+        // One measured trait deliberately not reproduced: the reference's
+        // left channel is ~2.3dB louder than its right. Shift has no
+        // per-channel gain, and a static level tilt isn't the character
+        // anyway.
+        { "JJ Breeze", -8.0f, 8.0f, 12.0f, 18.0f, 25.0f, 35.0f, 1.2f, 3.0f, 0.0f, 4000.0f, 25.0f, 0.0f, 30.0f, true, false, true },
 
         // "Lies": built from analyzing example/lies_1.mp3 (dry) against
         // example/lies_2.mp3 (processed) the same way JJ Dark Vocal was —

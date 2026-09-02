@@ -132,7 +132,9 @@ The editor's header carries a few more workflow controls, top to bottom:
   built-in factory presets and any **user presets** you save. **SAVE**
   prompts for a name and writes the current knob settings to disk
   (`~/Library/Application Support/Gerov/jj-breeze/Presets`, independent of
-  the fixed factory list, so the host-visible preset count never changes);
+  the fixed factory list, so the host-visible preset count never changes) —
+  `presets/` in this repo holds preset XML in that same format, copyable
+  straight into that folder to use without rebuilding;
   **DEL** removes the selected user preset (disabled for factory presets,
   which can't be deleted). The picker's text dims once you've tweaked
   something away from the selected preset, so it never silently claims to
@@ -159,7 +161,7 @@ isn't obvious from the knob alone.
 
 ## Factory presets
 
-The plugin exposes nine factory presets (`Source/PluginProcessor.cpp`,
+The plugin exposes eight factory presets (`Source/PluginProcessor.cpp`,
 `getPresets()`), selectable either from the in-plugin preset picker in the
 editor's header or from the host's own preset menu (in Logic: the preset
 field at the top of the plugin window) — both drive the same underlying
@@ -262,8 +264,51 @@ program list, so they always stay in sync with each other:
   own. No vibrato or delay signature was found in the reference files, so
   both stay off/default.
 
+- **JJ Call Me The Breeze** — built from analysing
+  `example/call_me_the_breaze_vocal.wav`. Unlike Lies there's no dry
+  counterpart to diff against, so every value below comes from measuring the
+  reference's own traits and then calibrating each control against them by
+  running a dry vocal (`example/lies_1.mp3`, mono-summed) through a port of
+  this plugin's exact DSP chain:
+  - **Width without detune.** Stereo correlation +0.81 and a side/mid ratio of
+    0.35 say "wide", but per-frame cross-correlation puts the L/R time offset
+    at 0.00 ms and pitch tracking puts the L/R pitch difference at 0.0 cents —
+    and the width is uniform across every octave (side/mid 0.33 to 0.39 from
+    80 Hz to 20 kHz) rather than highs-only. Pitch L at **−8 cents** and Pitch
+    R at **+8 cents**, with **Mix 35%**, reproduce that measurement
+    (calibrated result: +0.78 correlation, 0.354 side/mid, and 0.0 cents of
+    *measured* L/R difference — at 35% the unshifted dry still sets each
+    channel's pitch), and **Focus 25 Hz** keeps the width band-uniform the way
+    the reference is instead of the default 150 Hz crossover's highs-only
+    widening.
+  - **Dark, but only moderately.** 85% of the energy sits below 1.1 kHz and
+    the spectrum falls at −7.7 dB/oct across 1–8 kHz, yet it's still twice
+    as bright above 2 kHz (5.3% of total energy) as `cajunmoon_vocal.mp3`'s
+    2.5%. So Warmth is on but gentle — **Tone 4 kHz, Drive 25%, Mix 30%**
+    reproduces that −7.7 dB/oct tilt (calibrated result: −7.6) rather than
+    Cajun Moon's much heavier rolloff.
+  - **Body stays at 0%.** Warmth's shelf lifts 150 Hz and below, and the
+    reference has almost nothing there (0.1% under 100 Hz, 0.4% under
+    150 Hz); its 200 Hz–1 kHz slope is also *shallower* than the dry
+    reference vocal's, so there's no low-end lift to match — the warmth here
+    is top-end rolloff only.
+  - **No vibrato, no echo.** Sustained notes hold within ±10 cents once they
+    settle (the apparent ~1.5 Hz movement is phrasing into and out of each
+    note — the same false positive the Cajun Moon analysis turned up), and
+    the envelope autocorrelation decays smoothly with no repeat peak
+    anywhere between 15 and 400 ms. Vibrato stays off and Delay L/R stay in
+    width territory (12/18 ms) rather than slapback territory.
+
+  One measured trait deliberately not reproduced: the reference's left
+  channel is ~2.3 dB louder than its right. Shift has no per-channel gain,
+  and a static level tilt isn't the character anyway.
+
 To add more presets, extend the `std::array<Preset, N>` returned by
-`getPresets()` in `PluginProcessor.cpp` (and bump `N`).
+`getPresets()` in `PluginProcessor.cpp` (and bump `N`). Keep `N` equal to
+the number of entries actually listed: a mismatch leaves zero-filled phantom
+presets in the host's program list that silently zero every parameter when
+selected (`N` said 9 with only 7 entries listed until "JJ Call Me The
+Breeze" was added).
 
 The LFO rate/depth on the width path's modulated delay, the pitch shifter's
 grain length, and Vibrato's fixed 9ms center delay are all fixed internally

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<PARAMETERS>
+  <PARAM id="pitchL" value="-8.0"/>
+  <PARAM id="pitchR" value="8.0"/>
+  <PARAM id="delayL" value="12.0"/>
+  <PARAM id="delayR" value="18.0"/>
+  <PARAM id="focus" value="25.0"/>
+  <PARAM id="mix" value="35.0"/>
+  <PARAM id="vibratoRate" value="1.2"/>
+  <PARAM id="vibratoDepth" value="3.0"/>
+  <PARAM id="vibratoMix" value="0.0"/>
+  <PARAM id="warmthTone" value="4000.0"/>
+  <PARAM id="warmthDrive" value="25.0"/>
+  <PARAM id="warmthBody" value="0.0"/>
+  <PARAM id="warmthMix" value="30.0"/>
+  <PARAM id="shiftOn" value="1.0"/>
+  <PARAM id="vibratoOn" value="0.0"/>
+  <PARAM id="warmthOn" value="1.0"/>
+</PARAMETERS>
