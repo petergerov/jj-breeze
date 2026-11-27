@@ -109,7 +109,7 @@ delay values you want directly.
 
 | Control | Range | What it does |
 |---|---|---|
-| **Pitch L** | −1200 to +1200 cents | Pitch shift applied to the left channel. Default +300 (up) — see Factory presets/Default below for why. Skewed so fine micro-detune territory near 0 still gets most of the knob's travel, but the full ±1 octave is reachable. |
+| **Pitch L** | −1200 to +1200 cents | Pitch shift applied to the left channel. Default +300 (up) — see JJ Moon under Factory presets below. Skewed so fine micro-detune territory near 0 still gets most of the knob's travel, but the full ±1 octave is reachable. |
 | **Pitch R** | −1200 to +1200 cents | Pitch shift applied to the right channel. Default +300 (up), matching Pitch L — opposite signs instead gives the classic wide microshift; matching signs (as the default does) gives a mono-compatible pitch shift via delay offset alone, which is also how the dark/deep and bright/processed presets below work. |
 | **Delay L** | 0–250 ms | Base delay time on the left channel, with subtle built-in modulation. Subtle-width territory lives near the low end; classic slapback-echo timing (roughly 80–140 ms) and beyond is reachable further up, especially with Focus turned down (see "Slapback Twang" below). |
 | **Delay R** | 0–250 ms | Base delay time on the right channel. |
@@ -126,19 +126,33 @@ delay values you want directly.
 Each of the three sections (Shift, Vibrato, Warmth) also has its own on/off
 switch, independent of its Mix knob — see "How it works" above.
 
+Between Pitch L and R, and between Delay L and R, sits a **link switch**.
+While it's lit, turning either knob of the pair moves the other by the same
+amount (clamped to its range) — so a ±8 ct spread or a 12/18 ms offset can
+be moved as a unit. The links are saved with the host project but not in
+presets, and they only follow your hand: automation or a preset load moves
+each knob on its own.
+
 The editor's header carries a few more workflow controls, top to bottom:
 
-- A **preset** picker (see Factory presets below) covering both the nine
-  built-in factory presets and any **user presets** you save. **SAVE**
-  prompts for a name and writes the current knob settings to disk
-  (`~/Library/Application Support/Gerov/jj-breeze/Presets`, independent of
+- A **preset** picker (see Factory presets below) covering the eighteen
+  factory presets, grouped by category with a one-line summary each, and
+  any **user presets** you save. User presets live on disk
+  (`~/Library/Gerov/jj-breeze/Presets`, independent of
   the fixed factory list, so the host-visible preset count never changes) —
   `presets/` in this repo holds preset XML in that same format, copyable
-  straight into that folder to use without rebuilding;
-  **DEL** removes the selected user preset (disabled for factory presets,
-  which can't be deleted). The picker's text dims once you've tweaked
-  something away from the selected preset, so it never silently claims to
-  still show what's actually loaded.
+  straight into that folder to use without rebuilding.
+  - **SAVE** with a user preset loaded offers **Save "name"** (writes the
+    knobs back into it, no retyping) and **Save As…** (a new name); with a
+    factory preset loaded it goes straight to Save As…. The trash icon
+    deletes the loaded user preset (disabled for factory presets).
+  - The **red dot** at the left of the preset window lights once you've
+    moved anything away from the loaded preset. Click it while lit to go
+    back to the preset as it was loaded or last saved (it asks first, and
+    the revert is a single undo step); while dark it just opens the picker.
+    POWER off doesn't count as an edit.
+  - Which preset is loaded is saved with the host project, so a reopened
+    session still shows its name — and the dot, if it was left edited.
 - **Undo/redo** (the curved-arrow icon buttons, or Cmd+Z/Cmd+Shift+Z once
   the editor has focus) — covers every knob, toggle, preset load and A/B
   recall, grouped so one knob drag or one preset load undoes as a single
@@ -161,110 +175,50 @@ isn't obvious from the knob alone.
 
 ## Factory presets
 
-The plugin exposes eight factory presets (`Source/PluginProcessor.cpp`,
-`getPresets()`), selectable either from the in-plugin preset picker in the
-editor's header or from the host's own preset menu (in Logic: the preset
-field at the top of the plugin window) — both drive the same underlying
-program list, so they always stay in sync with each other:
+Eighteen factory presets (`Source/PluginProcessor.cpp`, `getPresets()`) —
+the same lineup as the AUv3 sibling. The editor's picker lists them by
+category, each with a one-line summary; the host's own preset menu (in
+Logic: the preset field at the top of the plugin window) lists the same
+programs as one flat list, and both stay in sync.
 
-- **Default** — Pitch L/R +300 cents (matching sign — a mono-compatible
-  pitch-up, not a wide microshift), Focus at its own 150Hz default, Mix 50%.
-  See "JJ Dark Vocal (Up)" below for where +300 cents comes from.
-- **JJ Cale Vocal** — width turned way down (Pitch L/R ±4 ct) rather than
-  off, for a touch of doubling glue without an obvious wide effect, plus a
-  single delayed repeat from Shift's own widened Delay (95/105 ms, offset
-  L/R) instead of a separate slapback layer, with Focus dropped to 40 Hz so
-  the repeat covers essentially the whole vocal rather than just the highs,
-  and Mix at 30% (up from the old 18%, since Mix now carries both the width
-  and the echo). Aimed at an intimate, laid-back, close vocal rather than a
-  wide/shimmery one.
-- **Cajun Moon Vocal** — retuned against an actual reference recording
+| Category | Presets |
+|---|---|
+| Start | Init |
+| Vocal | JJ Moon, JJ Breeze, JJ Dark Vocal, JJ Lies, Subtle Doubler |
+| Width | Stereo Width, Wide Guitar, Bass-Safe Width, Haas Width, Octave Width |
+| Character | Tape Wobble, Old Radio, Seasick |
+| Echo | Slapback Twang, 50s Slap Wide |
+| FX | Fifth Up, Deep Baritone |
+
+A new instance starts on **JJ Moon**. The old **Default** preset was an
+exact copy of JJ Moon and is gone; JJ Moon now sits at program 0, so a
+host recalling program 0 gets the same sound it always did. The other
+programs' host indices changed in this lineup — sessions don't depend on
+them (the full patch is saved with the project), but anything that selects
+presets by number, such as a program-change automation lane, will need
+re-pointing.
+
+The presets that started on the desktop keep the values they were built
+with here (the AUv3 retuned a few of its own — JJ Dark Vocal and Deep
+Baritone differ between the two); the rest are carried over from the AUv3
+as-is. Notes on the ones built from reference recordings:
+
+- **JJ Moon** — retuned against an actual reference recording
   (`example/cajunmoon_vocal.mp3`) rather than guessed. Analysing it
   (spectrogram, autocorrelation-based pitch tracking, stereo correlation)
   found no discrete slapback echo, no strong deliberate vibrato (the
   measured pitch movement was just natural vocal phrasing), and one clear,
-  dominant trait: a heavily rolled-off, dark/warm tone. So the preset is now
-  width off, a light touch of Vibrato (1.1 Hz, 3.5 ms depth, 15% mix —
-  present but no longer the main event), and **Warmth on** (Tone 2.8 kHz,
-  Drive 25%, Mix 70%) carrying the actual character.
-- **JJ Dark Vocal** — originally built from a second, more targeted
-  comparison: two takes of the same performance,
-  `example/cajunmoon_vocal_vocal_1.mp3` and `example/cajunmoon_vocal_vocal_2.mp3`.
-  **Note:** the file/character mapping used at the time (vocal_1 = "dark",
-  vocal_2 = "normal") was later confirmed backwards — vocal_1 is the normal
-  take, vocal_2 the processed/"dark" one (see "JJ Dark Vocal (Up)" below,
-  which targets the corrected, literal direction). This preset predates
-  that correction and pitches *down* rather than up; kept as-is as a
-  deliberately different, deeper take on "dark" rather than removed, since
-  it's still a reasonable, independently useful direction. What the
-  original analysis got right regardless of file labels: overall top-end
-  rolloff was nearly identical between the two takes (spectral tilt
-  ~−6.2 dB/oct either way) — top-end darkness wasn't what distinguished
-  them — while low-mid "chest" body and fundamental pitch did differ
-  substantially. This preset uses Pitch L/R at **−300 cents** with Focus
-  turned down to 25 Hz and Mix at 100% (so the shift covers the full band,
-  not just what's above the usual 150Hz Focus default), plus **Warmth on**
-  with **Body** engaged (Tone 2.8 kHz, Drive 25%, Body 70%, Mix 70%) for a
-  lower, chestier voice, with the same light Cajun-Moon-style vibrato as a
-  finishing touch.
-- **JJ Dark Vocal (Up)** — the corrected, literal vocal_1 (normal) →
-  vocal_2 (processed) match. Cross-correlating resampled vocal_1 windows
-  against time-aligned vocal_2 windows (which sidesteps the octave-error
-  risk of per-file absolute pitch tracking) put vocal_2 consistently
-  *above* vocal_1 in pitch, by roughly 2–3 semitones (noisy per-window
-  estimates, median 2.36 st); Pitch L/R at **+300 cents** (a clean,
-  easy-to-dial-in round number in that range — also Pitch L/R's own
-  parameter default, see Controls above) is used here instead of JJ Dark
-  Vocal's −300. Same Focus-down/Mix-100% full-band setup as JJ Dark Vocal.
-  Warmth's **Body** is left at 0% rather than boosted, since vocal_2's own
-  80–160Hz band actually sat *below* vocal_1's, not above it — unlike JJ
-  Dark Vocal, this preset doesn't add chest fullness. Tone/Drive/Mix are
-  carried over unchanged for the same rolled-off top end both presets
-  share.
-- **Octave Width** — a stereo width effect using Shift's independent L/R at
-  the full-octave end of its range rather than the cents-level microshift
-  territory Default/JJ Cale Vocal live in: the left channel drops a full
-  octave (Pitch L −1200 ct), the right stays at pitch (Pitch R 0 ct),
-  blended at 55% so the dry fundamental stays audible under the sub-octave
-  layer, with Focus down low so the drop covers the full band. Reads more
-  like an old octave pedal panned across the stereo field than a chorus-y
-  doubler. Vibrato and Warmth both stay off so the technique reads clearly
-  on its own.
-- **Slapback Twang** — the classic rockabilly move: a bright, dry signal
-  with nothing but a single delayed repeat, now built from Shift alone
-  (Pitch L/R at 0 — no shift, repeat only — Delay L/R at 110/115 ms,
-  matching the old dedicated Slapback section's Time, Focus dropped to
-  25 Hz so the repeat covers the full band, Mix at 35%). The one thing
-  the old section had that this doesn't: a feedback path, so this reads
-  as one clean repeat rather than a couple of decaying echoes. Vibrato and
-  Warmth stay off on purpose, so the top end stays open/twangy rather than
-  rolling dark.
-- **Deep Baritone** — JJ Dark Vocal pushed further into effect territory
-  rather than a natural-sounding voice: Pitch L/R at **−700 cents** (vs JJ
-  Dark Vocal's −300) with Warmth's Body and Drive both turned up further,
-  for a growly, monster-movie-trailer low end. No Vibrato here (unlike the
-  other dark/warm presets) — a wobble reads as comic rather than menacing
-  at this depth.
-- **Lies** — built from analyzing `example/lies_1.mp3` (dry) against
-  `example/lies_2.mp3` (processed) the same way JJ Dark Vocal was:
-  autocorrelation pitch-tracking found the right channel shifted up by a
-  measured **+470 cents** (154Hz to 202Hz median), while the left channel's
-  level collapsed to near-total digital silence in the processed file. That
-  silenced channel isn't reproducible with this plugin (Shift has no
-  per-channel pan or gain, only pitch and delay), so the preset approximates
-  the same *asymmetry* instead, Octave-Width-style: Pitch L stays at 0
-  (lies_1's L and R were already nearly identical — only one side got the
-  extreme treatment) while Pitch R alone carries the measured +470ct, one
-  channel left recognizable against a wildly pitched-up other one. Focus
-  dropped low so the shift covers the full band, and Mix pushed to 90%
-  (higher than Octave Width's 55%) since here the effect is meant to
-  dominate rather than just widen. The large brightness increase measured
-  between the two files (spectral centroid 682Hz to 1288Hz) needed no
-  separate Warmth stage — an upward shift this size produces that on its
-  own. No vibrato or delay signature was found in the reference files, so
-  both stay off/default.
-
-- **JJ Call Me The Breeze** — built from analysing
+  dominant trait: a heavily rolled-off, dark/warm tone. So Vibrato is a
+  light touch (1.2 Hz, 3 ms, 15%) and Warmth carries the character. Pitch
+  L/R at +300 cents with matching signs — a mono-compatible pitch-up rather
+  than a wide microshift — at a low 13% Mix.
+- **JJ Dark Vocal** — built from comparing two takes of the same
+  performance (`example/cajunmoon_vocal_vocal_1.mp3` and `_vocal_2.mp3`).
+  Pitches *down* (−300 cents) as a deliberately deeper take on "dark", with
+  Focus at 25 Hz so the shift covers the full band, and Warmth's **Body**
+  at 70% for the low-mid "chest" fullness the analysis found, plus the same
+  light vibrato as JJ Moon.
+- **JJ Breeze** — built from analysing
   `example/call_me_the_breaze_vocal.wav`. Unlike Lies there's no dry
   counterpart to diff against, so every value below comes from measuring the
   reference's own traits and then calibrating each control against them by
@@ -302,13 +256,33 @@ program list, so they always stay in sync with each other:
   One measured trait deliberately not reproduced: the reference's left
   channel is ~2.3 dB louder than its right. Shift has no per-channel gain,
   and a static level tilt isn't the character anyway.
+- **JJ Lies** — built from analysing `example/lies_1.mp3` (dry) against
+  `example/lies_2.mp3` (processed): pitch tracking found the right channel
+  shifted up by a measured **+470 cents** (154 Hz to 202 Hz median), while
+  the left channel collapsed to near-silence. That silenced channel isn't
+  reproducible here (Shift has no per-channel gain), so the preset keeps
+  the *asymmetry* instead: Pitch L at 0, Pitch R at +470 ct, Focus low so
+  the shift covers the full band. The brightness increase measured between
+  the files needed no Warmth — an upward shift this size produces it.
+- **Octave Width** — the left channel drops a full octave (Pitch L −1200 ct),
+  the right stays at pitch, blended low so the dry fundamental stays audible
+  under the sub-octave layer. More like an old octave pedal panned across the
+  stereo field than a chorus-y doubler.
+- **Slapback Twang** — the classic rockabilly move, built from Shift alone:
+  Pitch L/R at 0 (repeat only), Delay L/R at 110/115 ms, Focus at 25 Hz so
+  the repeat covers the full band, Mix 35%. Shift's delay has no feedback
+  path, so this is one clean repeat rather than a series of echoes.
+- **Deep Baritone** — JJ Dark Vocal pushed into effect territory: Pitch L/R
+  at −700 cents with Warmth's Body and Drive turned further up, for a
+  growly low end. No vibrato — a wobble reads as comic at this depth.
 
 To add more presets, extend the `std::array<Preset, N>` returned by
-`getPresets()` in `PluginProcessor.cpp` (and bump `N`). Keep `N` equal to
-the number of entries actually listed: a mismatch leaves zero-filled phantom
-presets in the host's program list that silently zero every parameter when
-selected (`N` said 9 with only 7 entries listed until "JJ Call Me The
-Breeze" was added).
+`getPresets()` in `PluginProcessor.cpp` (and bump `N`), giving each a
+category from `getPresetCategories()` and a one-line summary. Add new
+presets at the end, so existing host program numbers don't move. Keep `N`
+equal to the number of entries actually listed: a mismatch leaves
+zero-filled phantom presets in the host's program list that silently zero
+every parameter when selected.
 
 The LFO rate/depth on the width path's modulated delay, the pitch shifter's
 grain length, and Vibrato's fixed 9ms center delay are all fixed internally

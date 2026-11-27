@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
@@ -114,22 +115,61 @@ public:
     // without touching any parameter.
     void clearBypassedFlag() { bypassed = false; }
 
-    // Generic full-patch snapshot/compare, normalized (0..1) per parameter
-    // in ParamIDs::all order — used by the editor to remember what the
-    // currently-selected preset actually contains, so it can tell (and show)
-    // when the user has since tweaked something away from it.
-    std::array<float, ParamIDs::all.size()> captureNormalizedSnapshot() const;
-    bool matchesNormalizedSnapshot (const std::array<float, ParamIDs::all.size()>& snapshot) const;
-
     // User presets: full-patch snapshots saved to disk (same XML shape as
-    // the session state), independent of the fixed 8-entry factory preset
-    // list below so the host-visible program count never changes at
-    // runtime — VST3/AU hosts generally assume that list is fixed.
+    // the session state), independent of the fixed factory preset list
+    // below so the host-visible program count never changes at runtime —
+    // VST3/AU hosts generally assume that list is fixed.
     juce::File getUserPresetsDirectory() const;
     juce::StringArray getUserPresetNames() const;
+    // Saves the current knobs under `name` and makes it the loaded preset
+    // (so the edited dot goes out).
     void saveUserPreset (const juce::String& name);
     bool loadUserPreset (const juce::String& name);
+    // Deleting the loaded user preset leaves the sound alone and falls back
+    // to the last factory program as the "loaded" preset.
     void deleteUserPreset (const juce::String& name);
+
+    // --- The loaded preset -------------------------------------------------
+    // Factory presets are host programs; a user preset is loaded on top of
+    // whichever program was current, and its name is held here (empty while
+    // a factory preset is the loaded one). Both, plus the values the loaded
+    // preset holds, travel with the session (see getStateInformation()), so
+    // a reopened project still knows what it was built from.
+    juce::String getCurrentUserPresetName() const;
+    bool isUserPresetLoaded() const { return getCurrentUserPresetName().isNotEmpty(); }
+    juce::String getCurrentPresetName() const;
+    // Bumped whenever the loaded preset changes (load, save, delete, host
+    // program change, session restore) — the editor polls it to know when
+    // to re-sync its picker.
+    int getPresetChangeCount() const { return presetChangeCount.load(); }
+
+    // The edited dot: true once any knob or switch has moved away from what
+    // the loaded preset holds. Compared relative to each parameter's range
+    // so a 20-10000 Hz crossover and a 0-8 ms depth knob need a comparable
+    // nudge to count.
+    bool isPresetModified() const;
+    // Puts every knob back to how the loaded preset was loaded (or last
+    // saved), as one undo step.
+    void revertToLoadedPreset();
+    // "Save": writes the knobs back into the loaded user preset under its
+    // own name. False when a factory preset is loaded.
+    bool overwriteCurrentUserPreset();
+
+    // Factory preset menu metadata. Programs are listed to the host in
+    // getPresets() order; the editor groups them by category instead.
+    static const juce::StringArray& getPresetCategories();
+    juce::String getProgramCategory (int index) const;
+    juce::String getProgramSummary (int index) const;
+    // What a new instance starts on: JJ Moon, the sound the retired
+    // "Default" preset gave. Index 0, so a host recalling program 0 (as
+    // projects saved with "Default" do) still gets the same sound.
+    static constexpr int initialProgram = 0;
+
+    // --- Pitch/Delay link switches ------------------------------------------
+    // Whether the editor moves Pitch L/R (and Delay L/R) together. Panel
+    // state rather than parameters: saved with the host project, not in
+    // presets, and not automatable.
+    std::atomic<bool> linkPitch { false }, linkDelay { false };
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -140,22 +180,44 @@ private:
     bool bypassed = false;
     bool bypassSavedShiftOn = true, bypassSavedVibratoOn = false, bypassSavedWarmthOn = false;
 
-    // Factory presets: a name plus a value for every ParamIDs entry, in the
-    // same order createParameterLayout() adds them. Index 0 ("Default") is
-    // the plugin's normal default sound; later entries are alternate
-    // starting points selectable from the host's built-in preset menu.
+    // Factory presets: a name, a menu category and one-line summary, plus a
+    // value for every ParamIDs entry, in the same order createParameterLayout()
+    // adds them.
     struct Preset
     {
         const char* name;
+        const char* category;
+        const char* summary;
         float pitchL, pitchR, delayL, delayR, focus, mix,
               vibratoRate, vibratoDepth, vibratoMix,
               warmthTone, warmthDrive, warmthBody, warmthMix;
         bool shiftOn, vibratoOn, warmthOn;
     };
 
-    static const std::array<Preset, 8>& getPresets();
+    // Plain (denormalised) values for every ParamIDs entry, in ParamIDs::all
+    // order — what the edited dot compares against.
+    using PatchValues = std::array<float, ParamIDs::all.size()>;
+
+    static const std::array<Preset, 18>& getPresets();
+    static PatchValues valuesOf (const Preset&);
+    PatchValues captureValues() const;
+    void applyValues (const PatchValues&);
+    // A user preset file's values, falling back to `fallback` for any
+    // parameter the file doesn't mention.
+    PatchValues readUserPresetValues (const juce::String& name, const PatchValues& fallback) const;
+    juce::File userPresetFile (const juce::String& name) const;
+
     void applyPreset (int index);
-    int currentProgram = 0;
+    void setLoadedPreset (const juce::String& userPresetName, const PatchValues& values);
+
+    int currentProgram = initialProgram;
+
+    // Guards currentUserPresetName/loadedValues: hosts may restore state or
+    // change programs off the message thread while the editor polls them.
+    mutable juce::CriticalSection presetLock;
+    juce::String currentUserPresetName;
+    PatchValues loadedValues {};
+    std::atomic<int> presetChangeCount { 0 };
 
     struct ChannelVoice
     {

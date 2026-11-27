@@ -156,10 +156,43 @@ public:
         return juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 12.0f, juce::Font::bold));
     }
 
+    // Leaves room at the left of the window for the edited dot (see
+    // PresetModifiedDot), which the editor mounts over the picker there.
     void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override
     {
-        label.setBounds (7, 1, box.getWidth() - 26, box.getHeight() - 2);
+        label.setBounds (comboTextInset, 1, box.getWidth() - comboTextInset - 19, box.getHeight() - 2);
         label.setFont (getComboBoxFont (box));
+    }
+
+    static constexpr int comboTextInset = 21;
+
+    // Factory presets carry a one-line summary in the item's
+    // shortcutKeyDescription (see JJBreezeAudioProcessorEditor::refreshPresetBox())
+    // — PopupMenu already sizes the menu wide enough for it. Drawn here
+    // smaller and muted, right-aligned, rather than in the item's own colour
+    // as a key shortcut would be.
+    void drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area,
+                             bool isSeparator, bool isActive, bool isHighlighted, bool isTicked,
+                             bool hasSubMenu, const juce::String& text, const juce::String& shortcutKeyText,
+                             const juce::Drawable* icon, const juce::Colour* textColourToUse) override
+    {
+        LookAndFeel_V4::drawPopupMenuItem (g, area, isSeparator, isActive, isHighlighted, isTicked,
+                                            hasSubMenu, text, {}, icon, textColourToUse);
+
+        if (isSeparator || shortcutKeyText.isEmpty())
+            return;
+
+        // Same text area LookAndFeel_V4 lays the item's name out in.
+        auto r = area.reduced (1);
+        r.reduce (juce::jmin (5, area.getWidth() / 20), 0);
+        r.removeFromRight (3);
+
+        auto font = getPopupMenuFont();
+        font.setHeight (juce::jmin (font.getHeight(), (float) r.getHeight() / 1.3f) * 0.78f);
+        g.setFont (font);
+        g.setColour (isHighlighted && isActive ? findColour (juce::PopupMenu::highlightedTextColourId).withAlpha (0.75f)
+                                               : theme->textMuted);
+        g.drawText (shortcutKeyText, r, juce::Justification::centredRight, true);
     }
 
     // Text buttons (SAVE, the A/B compare pair) drawn as small machined
@@ -517,6 +550,96 @@ public:
     }
 };
 
+/** The edited dot at the left of the preset window: a small red lamp that
+    lights once the knobs have moved away from the loaded preset. Clicking
+    it while lit offers to revert; while dark it just opens the picker, as
+    the rest of the window does. Same as the AUv3 sibling's DirtyDot. */
+class PresetModifiedDot : public juce::Button
+{
+public:
+    PresetModifiedDot() : juce::Button ("Preset edited") {}
+
+    void setTheme (const GearPalette::Theme& t) { theme = &t; repaint(); }
+
+    void setLit (bool shouldBeLit)
+    {
+        if (lit == shouldBeLit)
+            return;
+        lit = shouldBeLit;
+        repaint();
+    }
+
+    bool isLit() const { return lit; }
+
+    void paintButton (juce::Graphics& g, bool isMouseOverButton, bool /*isButtonDown*/) override
+    {
+        const auto centre = getLocalBounds().toFloat().getCentre();
+        const float radius = 3.2f;
+
+        if (lit)
+        {
+            g.setGradientFill (RetroDraw::radial (theme->lampRed.withAlpha (0.55f), theme->lampRed.withAlpha (0.0f),
+                                                   centre, radius * 3.0f));
+            g.fillEllipse (juce::Rectangle<float> (radius * 6.0f, radius * 6.0f).withCentre (centre));
+            g.setColour (isMouseOverButton ? theme->lampRed.brighter (0.3f) : theme->lampRed);
+        }
+        else
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.07f));
+        }
+
+        g.fillEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (centre));
+    }
+
+private:
+    const GearPalette::Theme* theme = &GearPalette::defaultTheme();
+    bool lit = false;
+};
+
+/** A link switch: a small chrome button carrying a chain-link pictogram,
+    sitting between a Shift L/R knob pair. Lit, the pair moves together —
+    see JJBreezeAudioProcessorEditor::linkKnobs(). Same as the AUv3
+    sibling's LinkIconBadge. */
+class LinkSwitchButton : public juce::ToggleButton
+{
+public:
+    void setTheme (const GearPalette::Theme& t) { theme = &t; repaint(); }
+
+    void paintButton (juce::Graphics& g, bool isMouseOverButton, bool /*isButtonDown*/) override
+    {
+        const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
+        const auto centre = bounds.getCentre();
+        const bool on = getToggleState();
+        const float size = juce::jmin (bounds.getWidth(), bounds.getHeight());
+        const auto disc = juce::Rectangle<float> (size, size).withCentre (centre);
+
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.fillEllipse (disc.translated (0.0f, 1.0f));
+        g.setGradientFill (RetroDraw::radial (theme->metalMid, theme->metalDark,
+                                               disc.getTopLeft() + juce::Point<float> (size * 0.35f, size * 0.3f), size * 0.7f));
+        g.fillEllipse (disc);
+        g.setColour (on ? theme->accent.withAlpha (0.75f) : juce::Colours::black.withAlpha (0.55f));
+        g.drawEllipse (disc, 1.0f);
+
+        // Two interlocking links on a diagonal.
+        const float linkW = size * 0.42f, linkH = size * 0.24f, stroke = juce::jmax (1.3f, size * 0.075f);
+        juce::Path links;
+        links.addRoundedRectangle (-linkW * 0.82f, -linkH * 0.5f, linkW, linkH, linkH * 0.5f);
+        links.addRoundedRectangle (linkW * 0.82f - linkW, -linkH * 0.5f, linkW, linkH, linkH * 0.5f);
+        links.applyTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::pi * 0.25f)
+                                  .translated (centre.x, centre.y));
+
+        auto colour = on ? theme->accent : theme->textMuted;
+        if (isMouseOverButton)
+            colour = colour.brighter (0.2f);
+        g.setColour (colour);
+        g.strokePath (links, juce::PathStrokeType (stroke));
+    }
+
+private:
+    const GearPalette::Theme* theme = &GearPalette::defaultTheme();
+};
+
 /** The engraved nameplate riveted to the bottom of the panel: model,
     what the box does, and which build you're looking at. */
 class ModelPlate : public juce::Component
@@ -609,11 +732,50 @@ public:
         // step, rather than every intermediate value the drag passes
         // through — apvts.undoManager is public specifically for cases
         // like this (see JJBreezeAudioProcessor::undoManager).
-        if (auto* um = apvts.undoManager)
+        //
+        // Every edit made by hand — a drag, a double-click reset, a typed
+        // value, the mouse wheel, the arrow keys — is bracketed by Slider's
+        // drag start/end, while a change arriving from the parameter (host
+        // automation, a preset load) is not. That is what tells the
+        // onUserGesture* hooks below a hand on the knob from the knob
+        // merely following its parameter.
+        auto* um = apvts.undoManager;
+        const juce::String transactionName = caption;
+        slider.onDragStart = [this, um, transactionName]
         {
-            const juce::String transactionName = caption;
-            slider.onDragStart = [um, transactionName] { um->beginNewTransaction (transactionName); };
-        }
+            if (um != nullptr)
+                um->beginNewTransaction (transactionName);
+            inUserGesture = true;
+            if (onUserGestureStart)
+                onUserGestureStart (slider.getValue());
+        };
+        slider.onDragEnd = [this]
+        {
+            inUserGesture = false;
+            if (onUserGestureEnd)
+                onUserGestureEnd();
+        };
+        slider.onValueChange = [this]
+        {
+            if (inUserGesture && onUserGestureChange)
+                onUserGestureChange (slider.getValue());
+        };
+    }
+
+    // Hooks for an edit made by hand (see the constructor), in the
+    // parameter's own units: the value the gesture started from, each new
+    // value during it, and its end. Used to drive a linked peer knob.
+    std::function<void (double startValue)> onUserGestureStart;
+    std::function<void (double newValue)> onUserGestureChange;
+    std::function<void()> onUserGestureEnd;
+
+    // Centre of the knob's dial, in the parent's coordinates — where the
+    // editor seats a link switch between two knobs.
+    juce::Point<int> getDialCentreInParent() const
+    {
+        auto dial = slider.getBounds();
+        dial.removeFromBottom (slider.getTextBoxHeight());
+        return getPosition() + dial.getCentre();
     }
 
     // Every knob on the panel draws at the same diameter, whatever size
@@ -658,6 +820,7 @@ public:
 private:
     const GearPalette::Theme* theme = &GearPalette::defaultTheme();
     int knobDiameterCap = 96;
+    bool inUserGesture = false;
     juce::Slider slider;
     EngravedLabel label;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
@@ -708,16 +871,42 @@ private:
     void applyTheme (const juce::String& themeId, bool remember = false);
     void cycleTheme();
 
-    // Repopulates presetBox from the factory list plus whatever's on disk
-    // in JJBreezeAudioProcessor::getUserPresetsDirectory(), then restores
-    // the correct selection. Called at startup and after any save/delete.
+    // Repopulates presetBox — factory presets grouped by category, each
+    // with its one-line summary, then whatever's on disk in
+    // JJBreezeAudioProcessor::getUserPresetsDirectory() — and selects the
+    // processor's loaded preset. Called at startup and whenever the
+    // processor reports the loaded preset changed (see timerCallback()).
     void refreshPresetBox();
-    // "Save current as..." — prompts for a name via a small modal dialog,
-    // then writes it to disk and selects it.
+    // SAVE: with a user preset loaded, a small menu offering to save back
+    // into it or under a new name; otherwise straight to the name prompt.
+    void showSaveMenu();
+    // "Save As..." — prompts for a name via a small modal dialog, then
+    // writes it to disk and selects it.
     void promptAndSaveUserPreset();
     // Confirms via a modal dialog (deletion isn't undoable) before actually
     // deleting the selected user preset.
     void promptAndDeleteUserPreset();
+    // The edited dot: lit, asks before reverting to the loaded preset;
+    // dark, opens the preset picker like the rest of the window.
+    void onModifiedDotClicked();
+
+    // Makes a pair of knobs move together while `linked` is on: turning
+    // either one by hand moves the other by the same amount (in the
+    // parameter's own units, clamped to its range), as one undo step and
+    // one host automation gesture per knob. Same as the AUv3 sibling's
+    // linked knobs.
+    // What one knob of a linked pair is doing to its peer during a gesture.
+    struct LinkedGesture
+    {
+        bool active = false;
+        double sourceStart = 0.0;
+        float peerStart = 0.0f;
+    };
+
+    // One direction of a link: hands on `source` drive `peerParamID`.
+    // Called twice per pair, once each way.
+    void driveLinkedPeer (LabelledKnob& source, const juce::String& peerParamID,
+                          LinkedGesture& gesture, std::atomic<bool>& linked);
 
     // Bonus for the Standalone build, which has no host-supplied Edit menu
     // of its own; harmless (and likely just inert) when hosted in a DAW,
@@ -779,18 +968,18 @@ private:
     // often buried, preset menu) plus any user presets on disk, refreshed
     // by refreshPresetBox().
     juce::ComboBox presetBox;
+    PresetModifiedDot modifiedDot;
     juce::TextButton saveButton { "SAVE" };
     DeleteIconButton deleteButton;
-    int lastKnownProgram = -1;
-    // Empty when a factory preset is the active patch; the name of the
-    // active user preset otherwise — presetBox items in both ranges share
-    // one control, but only user presets are deletable and only factory
-    // presets are tracked by getCurrentProgram().
-    juce::String activeUserPresetName;
-    // What the currently-selected preset (factory or user) actually
-    // contains, captured right after loading it — compared against the live
-    // patch each timer tick to show/hide the "modified" indicator.
-    std::array<float, ParamIDs::all.size()> activePresetSnapshot {};
+    // JJBreezeAudioProcessor::getPresetChangeCount() as of the last
+    // refreshPresetBox() — which preset is loaded lives on the processor
+    // (it travels with the session), the editor only follows it.
+    int lastPresetChangeCount = -1;
+
+    // Pitch L/R and Delay L/R link switches — see linkKnobs().
+    LinkSwitchButton linkPitchButton, linkDelayButton;
+    // One per knob: pitchL, pitchR, delayL, delayR.
+    std::array<LinkedGesture, 4> linkedGestures;
 
     // Undo/redo — see JJBreezeAudioProcessor::undoManager.
     UndoRedoButton undoButton { false }, redoButton { true };

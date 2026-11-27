@@ -130,27 +130,26 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
         {
             const auto names = processorRef.getUserPresetNames();
             const int idx = id - firstUserPresetItemId;
-            if (idx >= 0 && idx < names.size() && processorRef.loadUserPreset (names[idx]))
-            {
-                activeUserPresetName = names[idx];
-                activePresetSnapshot = processorRef.captureNormalizedSnapshot();
-                deleteButton.setEnabled (true);
-            }
+            if (idx >= 0 && idx < names.size())
+                processorRef.loadUserPreset (names[idx]);
         }
         else if (id >= 1)
         {
             processorRef.setCurrentProgram (id - 1);
-            lastKnownProgram = id - 1;
-            activeUserPresetName.clear();
-            activePresetSnapshot = processorRef.captureNormalizedSnapshot();
-            deleteButton.setEnabled (false);
         }
+
+        refreshPresetBox();
     };
     refreshPresetBox();
     addAndMakeVisible (presetBox);
 
-    saveButton.setTooltip ("Save the current knob settings as a new user preset.");
-    saveButton.onClick = [this] { promptAndSaveUserPreset(); };
+    // Added after presetBox so it sits on top of the window's left end.
+    modifiedDot.setTooltip ("Lit when you have edited the preset. Click it to go back to the preset as it was loaded or last saved.");
+    modifiedDot.onClick = [this] { onModifiedDotClicked(); };
+    addAndMakeVisible (modifiedDot);
+
+    saveButton.setTooltip ("Save the current knob settings - back into the loaded user preset, or as a new one.");
+    saveButton.onClick = [this] { showSaveMenu(); };
     addAndMakeVisible (saveButton);
 
     deleteButton.setTooltip ("Delete the selected user preset. Only enabled for user presets - factory presets can't be deleted.");
@@ -212,6 +211,24 @@ JJBreezeAudioProcessorEditor::JJBreezeAudioProcessorEditor (JJBreezeAudioProcess
     addAndMakeVisible (mixKnob);
 
     setUpSectionLabel (shiftSectionLabel, "SHIFT");
+
+    // Link switches between each Shift L/R pair. Their state lives on the
+    // processor, which saves it with the project (not in presets);
+    // timerCallback() keeps them in step when a host restores it.
+    auto setUpLink = [this] (LinkSwitchButton& button, std::atomic<bool>& linked, const juce::String& tooltip)
+    {
+        button.setTooltip (tooltip);
+        button.setToggleState (linked.load(), juce::dontSendNotification);
+        button.onClick = [&button, &linked] { linked = button.getToggleState(); };
+        addAndMakeVisible (button);
+    };
+    setUpLink (linkPitchButton, p.linkPitch, "Link Pitch L and R: turning either moves both by the same amount.");
+    setUpLink (linkDelayButton, p.linkDelay, "Link Delay L and R: turning either moves both by the same amount.");
+
+    driveLinkedPeer (pitchLKnob, ParamIDs::pitchR, linkedGestures[0], p.linkPitch);
+    driveLinkedPeer (pitchRKnob, ParamIDs::pitchL, linkedGestures[1], p.linkPitch);
+    driveLinkedPeer (delayLKnob, ParamIDs::delayR, linkedGestures[2], p.linkDelay);
+    driveLinkedPeer (delayRKnob, ParamIDs::delayL, linkedGestures[3], p.linkDelay);
 
     setUpSectionLabel (vibratoSectionLabel, "VIBRATO");
     addAndMakeVisible (vibratoRateKnob);
@@ -310,6 +327,9 @@ void JJBreezeAudioProcessorEditor::applyTheme (const juce::String& themeId, bool
     undoButton.setTheme (*currentTheme);
     redoButton.setTheme (*currentTheme);
     deleteButton.setTheme (*currentTheme);
+    modifiedDot.setTheme (*currentTheme);
+    linkPitchButton.setTheme (*currentTheme);
+    linkDelayButton.setTheme (*currentTheme);
 
     for (auto* lamp : { &shiftLamp, &vibratoLamp, &warmthLamp })
     {
@@ -418,6 +438,11 @@ void JJBreezeAudioProcessorEditor::updateSectionEnablement()
 
     setSectionEnabled (shiftWasOn, shiftSectionLabel, shiftLamp,
                         { &pitchLKnob, &pitchRKnob, &focusKnob, &delayLKnob, &delayRKnob, &mixKnob });
+    for (auto* link : { &linkPitchButton, &linkDelayButton })
+    {
+        link->setAlpha (shiftWasOn ? 1.0f : 0.42f);
+        link->setEnabled (shiftWasOn);
+    }
     setSectionEnabled (vibratoWasOn, vibratoSectionLabel, vibratoLamp,
                         { &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob });
     setSectionEnabled (warmthWasOn, warmthSectionLabel, warmthLamp,
@@ -444,48 +469,86 @@ void JJBreezeAudioProcessorEditor::switchCompareSlot (int targetSlot)
 
 void JJBreezeAudioProcessorEditor::refreshPresetBox()
 {
+    lastPresetChangeCount = processorRef.getPresetChangeCount();
+
     presetBox.clear (juce::dontSendNotification);
 
-    presetBox.addSectionHeading ("FACTORY");
-    for (int i = 0; i < processorRef.getNumPrograms(); ++i)
-        presetBox.addItem (processorRef.getProgramName (i), i + 1); // ComboBox item IDs are 1-based
+    // Factory presets by category, in the menu order the processor gives —
+    // each item's ID is its host program index + 1 (ComboBox IDs can't be
+    // 0). The one-line summary rides in shortcutKeyDescription; see
+    // RetroLookAndFeel::drawPopupMenuItem().
+    for (const auto& category : JJBreezeAudioProcessor::getPresetCategories())
+    {
+        presetBox.addSectionHeading (category.toUpperCase());
+
+        for (int i = 0; i < processorRef.getNumPrograms(); ++i)
+        {
+            if (processorRef.getProgramCategory (i) != category)
+                continue;
+
+            juce::PopupMenu::Item item (processorRef.getProgramName (i));
+            item.itemID = i + 1;
+            item.shortcutKeyDescription = processorRef.getProgramSummary (i);
+            presetBox.getRootMenu()->addItem (std::move (item));
+        }
+    }
 
     const auto userPresetNames = processorRef.getUserPresetNames();
     if (! userPresetNames.isEmpty())
     {
-        presetBox.addSeparator();
         presetBox.addSectionHeading ("USER");
         for (int i = 0; i < userPresetNames.size(); ++i)
             presetBox.addItem (userPresetNames[i], firstUserPresetItemId + i);
     }
 
-    if (activeUserPresetName.isNotEmpty())
-    {
-        const int idx = userPresetNames.indexOf (activeUserPresetName);
-        if (idx >= 0)
-            presetBox.setSelectedId (firstUserPresetItemId + idx, juce::dontSendNotification);
-        else
-            activeUserPresetName.clear(); // it was just deleted - nothing left to select under that name
-    }
+    const auto userPreset = processorRef.getCurrentUserPresetName();
+    const int userIndex = userPreset.isNotEmpty() ? userPresetNames.indexOf (userPreset) : -1;
 
-    if (activeUserPresetName.isEmpty())
-    {
-        lastKnownProgram = processorRef.getCurrentProgram();
-        presetBox.setSelectedId (lastKnownProgram + 1, juce::dontSendNotification);
-        deleteButton.setEnabled (false);
-    }
+    if (userIndex >= 0)
+        presetBox.setSelectedId (firstUserPresetItemId + userIndex, juce::dontSendNotification);
     else
+        presetBox.setSelectedId (processorRef.getCurrentProgram() + 1, juce::dontSendNotification);
+
+    deleteButton.setEnabled (userIndex >= 0);
+    modifiedDot.setLit (processorRef.isPresetModified());
+}
+
+void JJBreezeAudioProcessorEditor::showSaveMenu()
+{
+    const auto userPreset = processorRef.getCurrentUserPresetName();
+    if (userPreset.isEmpty())
     {
-        deleteButton.setEnabled (true);
+        promptAndSaveUserPreset();
+        return;
     }
 
-    activePresetSnapshot = processorRef.captureNormalizedSnapshot();
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&retroLookAndFeel);
+    menu.addItem (1, "Save \"" + userPreset + "\"");
+    menu.addItem (2, "Save As...");
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&saveButton),
+                        [safeThis = juce::Component::SafePointer<JJBreezeAudioProcessorEditor> (this)] (int result)
+                        {
+                            if (safeThis == nullptr)
+                                return;
+
+                            if (result == 1)
+                            {
+                                safeThis->processorRef.overwriteCurrentUserPreset();
+                                safeThis->refreshPresetBox();
+                            }
+                            else if (result == 2)
+                            {
+                                safeThis->promptAndSaveUserPreset();
+                            }
+                        });
 }
 
 void JJBreezeAudioProcessorEditor::promptAndSaveUserPreset()
 {
-    auto* aw = new juce::AlertWindow ("Save Preset", "Name this preset:", juce::MessageBoxIconType::NoIcon);
-    aw->addTextEditor ("name", activeUserPresetName);
+    auto* aw = new juce::AlertWindow ("Save Preset As", "Name this preset:", juce::MessageBoxIconType::NoIcon);
+    aw->addTextEditor ("name", processorRef.getCurrentUserPresetName());
     aw->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
@@ -504,21 +567,49 @@ void JJBreezeAudioProcessorEditor::promptAndSaveUserPreset()
         if (name.isEmpty())
             return;
 
-        processorRef.saveUserPreset (name);
-        activeUserPresetName = name;
+        processorRef.saveUserPreset (name); // also makes it the loaded preset
         refreshPresetBox();
     }));
 }
 
 void JJBreezeAudioProcessorEditor::promptAndDeleteUserPreset()
 {
-    if (activeUserPresetName.isEmpty())
+    const auto userPreset = processorRef.getCurrentUserPresetName();
+    if (userPreset.isEmpty())
         return;
 
     auto* aw = new juce::AlertWindow ("Delete Preset",
-                                       "Delete \"" + activeUserPresetName + "\"? This can't be undone.",
+                                       "Delete \"" + userPreset + "\"? This can't be undone.",
                                        juce::MessageBoxIconType::WarningIcon);
     aw->addButton ("Delete", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    // Same ownership pattern as promptAndSaveUserPreset() above.
+    aw->enterModalState (true, juce::ModalCallbackFunction::create ([this, aw, userPreset] (int result)
+    {
+        std::unique_ptr<juce::AlertWindow> ownedWindow (aw);
+
+        if (result != 1)
+            return;
+
+        processorRef.deleteUserPreset (userPreset);
+        refreshPresetBox(); // falls back to showing the current factory program
+    }));
+}
+
+void JJBreezeAudioProcessorEditor::onModifiedDotClicked()
+{
+    if (! processorRef.isPresetModified())
+    {
+        presetBox.showPopup();
+        return;
+    }
+
+    auto* aw = new juce::AlertWindow ("Revert Preset",
+                                       "Revert to \"" + processorRef.getCurrentPresetName() + "\"?\n"
+                                       "The knobs go back to how the preset was loaded or last saved.",
+                                       juce::MessageBoxIconType::QuestionIcon);
+    aw->addButton ("Revert", 1, juce::KeyPress (juce::KeyPress::returnKey));
     aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
     // Same ownership pattern as promptAndSaveUserPreset() above.
@@ -529,10 +620,55 @@ void JJBreezeAudioProcessorEditor::promptAndDeleteUserPreset()
         if (result != 1)
             return;
 
-        processorRef.deleteUserPreset (activeUserPresetName);
-        activeUserPresetName.clear();
-        refreshPresetBox(); // falls back to showing the current factory program
+        processorRef.revertToLoadedPreset();
+        updateBypassToggleState(); // reverting restores the preset's own section switches
+        modifiedDot.setLit (processorRef.isPresetModified());
     }));
+}
+
+void JJBreezeAudioProcessorEditor::driveLinkedPeer (LabelledKnob& source, const juce::String& peerParamID,
+                                                     LinkedGesture& gesture, std::atomic<bool>& linked)
+{
+    auto& apvts = processorRef.apvts;
+    auto* peer = apvts.getParameter (peerParamID);
+    if (peer == nullptr)
+        return;
+
+    // Whether the pair is linked is read once, at the start of the gesture,
+    // so flipping the switch mid-drag can't leave a half-open gesture.
+    source.onUserGestureStart = [&gesture, &linked, peer] (double startValue)
+    {
+        gesture.active = linked.load();
+        if (! gesture.active)
+            return;
+
+        gesture.sourceStart = startValue;
+        gesture.peerStart = peer->convertFrom0to1 (peer->getValue());
+        peer->beginChangeGesture();
+    };
+
+    // Moves the peer by the same amount the source has moved since the
+    // gesture began. The peer's own knob just follows its parameter — that
+    // isn't a hand on it, so it doesn't drive this knob back.
+    source.onUserGestureChange = [&gesture, peer] (double newValue)
+    {
+        if (! gesture.active)
+            return;
+
+        const auto& range = peer->getNormalisableRange();
+        const auto target = juce::jlimit (range.start, range.end,
+                                          gesture.peerStart + (float) (newValue - gesture.sourceStart));
+        peer->setValueNotifyingHost (peer->convertTo0to1 (target));
+    };
+
+    source.onUserGestureEnd = [&gesture, peer]
+    {
+        if (! gesture.active)
+            return;
+
+        gesture.active = false;
+        peer->endChangeGesture();
+    };
 }
 
 bool JJBreezeAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
@@ -571,26 +707,19 @@ void JJBreezeAudioProcessorEditor::timerCallback()
         updateBypassToggleState();
     }
 
-    // The current program can also change from outside this editor - the
+    // The loaded preset can also change from outside this editor - the
     // host's own preset menu, automation, or a saved session reloading -
-    // keep the picker in sync without re-triggering onChange (which would
-    // otherwise just re-apply the same preset). An external program change
-    // always means a factory preset is now active, even if a user preset
-    // was showing a moment ago.
-    const int currentProgram = processorRef.getCurrentProgram();
-    if (currentProgram != lastKnownProgram)
-    {
-        lastKnownProgram = currentProgram;
-        activeUserPresetName.clear();
-        presetBox.setSelectedId (currentProgram + 1, juce::dontSendNotification);
-        activePresetSnapshot = processorRef.captureNormalizedSnapshot();
-        deleteButton.setEnabled (false);
-    }
+    // keep the picker in sync without re-triggering onChange (which would otherwise just re-apply
+    // the same preset).
+    if (processorRef.getPresetChangeCount() != lastPresetChangeCount)
+        refreshPresetBox();
 
-    // "Modified" indicator: dim the preset picker's text once the live
-    // patch no longer matches what the selected preset actually contains.
-    const bool modified = ! processorRef.matchesNormalizedSnapshot (activePresetSnapshot);
-    presetBox.setColour (juce::ComboBox::textColourId, modified ? currentTheme->textMuted : currentTheme->ledText);
+    modifiedDot.setLit (processorRef.isPresetModified());
+
+    // The link switches are restored with the session, which the host may
+    // do while this editor is open.
+    linkPitchButton.setToggleState (processorRef.linkPitch.load(), juce::dontSendNotification);
+    linkDelayButton.setToggleState (processorRef.linkDelay.load(), juce::dontSendNotification);
 
     undoButton.setEnabled (processorRef.undoManager.canUndo());
     redoButton.setEnabled (processorRef.undoManager.canRedo());
@@ -766,6 +895,13 @@ void JJBreezeAudioProcessorEditor::resized()
     saveButton.setBounds (centred (header.removeFromLeft (46)));
     header.removeFromLeft (4);
     deleteButton.setBounds (centred (header.removeFromLeft (28)));
+
+    // The edited dot sits inside the preset window's left end, in the space
+    // RetroLookAndFeel::positionComboBoxText() leaves clear for it.
+    {
+        const auto box = presetBox.getBounds();
+        modifiedDot.setBounds (box.withWidth (RetroLookAndFeel::comboTextInset).reduced (2, 2));
+    }
     // Whatever's left of the row stays blank - reserved space.
 
     // Each section's controls, mounted on the sub-plate painted for it by
@@ -820,6 +956,17 @@ void JJBreezeAudioProcessorEditor::resized()
 
     layoutSection (plates[0], shiftToggle, shiftSectionLabel, shiftLamp,
                     { { &pitchLKnob, &pitchRKnob, &focusKnob }, { &delayLKnob, &delayRKnob, &mixKnob } });
+
+    // Each link switch sits in the gap between its L and R knobs, level
+    // with their dials - where the AUv3 sibling's link badges sit.
+    auto placeLinkSwitch = [] (LinkSwitchButton& button, const LabelledKnob& left, const LabelledKnob& right)
+    {
+        const int size = juce::jlimit (16, 26, (right.getX() - left.getRight()) + 12);
+        const auto centre = (left.getDialCentreInParent() + right.getDialCentreInParent()) / 2;
+        button.setBounds (juce::Rectangle<int> (size, size).withCentre (centre));
+    };
+    placeLinkSwitch (linkPitchButton, pitchLKnob, pitchRKnob);
+    placeLinkSwitch (linkDelayButton, delayLKnob, delayRKnob);
 
     layoutSection (plates[1], vibratoToggle, vibratoSectionLabel, vibratoLamp,
                     { { &vibratoRateKnob, &vibratoDepthKnob, &vibratoMixKnob } });
